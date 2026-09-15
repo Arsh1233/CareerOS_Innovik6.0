@@ -77,6 +77,11 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   /** True while the stored session is being restored on startup. */
   isLoading: boolean;
+  /**
+   * Current Supabase access token, or null when signed out. Used by pages that
+   * call the API directly (skills, roadmap, resume).
+   */
+  accessToken: string | null;
   /** True while a sign-in/sign-up request is in flight. */
   isSubmitting: boolean;
   /** Non-fatal problem with the current session (expired, backend unreachable). */
@@ -111,6 +116,7 @@ const AuthContext = createContext<AuthContextValue>({
   role: null,
   isAuthenticated: false,
   isLoading: true,
+  accessToken: null,
   isSubmitting: false,
   sessionError: null,
   signIn: () => Promise.reject(new Error("AuthProvider is not mounted.")),
@@ -141,16 +147,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   // Kept in a ref so callbacks never act on a stale token.
   const sessionRef = useRef<StoredSession | null>(null);
 
+  // Single place that keeps the ref (used by callbacks) and the exposed token
+  // (used by screens) in sync.
+  const applySession = useCallback((next: StoredSession | null) => {
+    sessionRef.current = next;
+    setAccessToken(next?.tokens.access_token ?? null);
+  }, []);
+
   const clearLocalSession = useCallback(() => {
-    sessionRef.current = null;
+    applySession(null);
     sessionStore.clear();
     setUser(null);
     setIdentity(null);
-  }, []);
+  }, [applySession]);
 
   /** Apply an authoritative identity and persist the current tokens with it. */
   const applyIdentity = useCallback((next: CurrentUser) => {
@@ -193,7 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      sessionRef.current = stored;
+      applySession(stored);
       try {
         const me = await usersApi.me(stored.tokens.access_token);
         if (cancelled) return;
@@ -207,7 +221,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Backend unreachable or not configured: the user is NOT treated as
           // authenticated. The stored session is left in place so a later load
           // can retry, but nothing is restored from it now.
-          sessionRef.current = null;
+          applySession(null);
         }
         setSessionError(userMessage(error));
       } finally {
@@ -219,7 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [applyIdentity, clearLocalSession]);
+  }, [applyIdentity, applySession, clearLocalSession]);
 
   // ── sign in ─────────────────────────────────────────────────────────────
   const signIn = useCallback(
@@ -267,7 +281,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           tokens: result.session,
           savedAt: new Date().toISOString(),
         };
-        sessionRef.current = stored;
+        applySession(stored);
         sessionStore.write(stored);
 
         try {
@@ -299,7 +313,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsSubmitting(false);
       }
     },
-    [applyIdentity, clearLocalSession],
+    [applyIdentity, applySession, clearLocalSession],
   );
 
   // ── sign up ─────────────────────────────────────────────────────────────
@@ -344,7 +358,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           tokens: result.session,
           savedAt: new Date().toISOString(),
         };
-        sessionRef.current = stored;
+        applySession(stored);
         sessionStore.write(stored);
 
         try {
@@ -372,7 +386,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsSubmitting(false);
       }
     },
-    [applyIdentity, clearLocalSession],
+    [applyIdentity, applySession, clearLocalSession],
   );
 
   // ── sign out ────────────────────────────────────────────────────────────
@@ -460,6 +474,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role: user?.role ?? null,
       isAuthenticated: Boolean(user),
       isLoading,
+      accessToken,
       isSubmitting,
       sessionError,
       signIn,
@@ -473,6 +488,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       identity,
       isLoading,
+      accessToken,
       isSubmitting,
       sessionError,
       signIn,
