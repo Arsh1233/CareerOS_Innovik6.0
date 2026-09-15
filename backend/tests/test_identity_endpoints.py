@@ -466,6 +466,7 @@ def test_health_reports_all_configured_capabilities(client: TestClient) -> None:
     expected_capabilities = {
         "supabase_auth",
         "supabase_admin",
+        "supabase_storage",
         "database",
         "groq",
         "qdrant",

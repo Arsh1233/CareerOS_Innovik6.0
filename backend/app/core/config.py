@@ -49,9 +49,17 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
 
-
     qdrant_url: str = ""
     qdrant_api_key: str = ""
+
+    # ── Resume Intelligence (Phase 05) ────────────────────────────────────
+    resume_max_file_mb: int = 10
+    resume_bucket: str = "resumes"
+
+    # ── Embedding contract (project-wide — do NOT change without versioning)
+    # Model: BAAI/bge-small-en-v1.5  |  Dimension: 384  |  Distance: Cosine
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    qdrant_resume_collection: str = "resume_embeddings"
 
     elevenlabs_api_key: str = ""
 
@@ -87,6 +95,7 @@ class Settings(BaseSettings):
         return {
             "supabase_auth": bool(self.supabase_url and self.supabase_anon_key),
             "supabase_admin": bool(self.supabase_url and self.supabase_service_role_key),
+            "supabase_storage": bool(self.supabase_url and self.supabase_service_role_key),
             "database": bool(self.database_url),
             "groq": bool(self.groq_api_key),
             "qdrant": bool(self.qdrant_url and self.qdrant_api_key),
