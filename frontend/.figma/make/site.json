@@ -1,0 +1,10 @@
+{
+  "description": "Streamline and automate complete workflows from start to finish, enhancing efficiency and accuracy for professionals managing complex processes.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
