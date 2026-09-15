@@ -1,0 +1,1 @@
+"""CareerOS FastAPI application package."""
