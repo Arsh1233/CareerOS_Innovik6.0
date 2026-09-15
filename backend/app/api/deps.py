@@ -16,12 +16,15 @@ from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.core.security import decode_access_token, role_from_claims
 from app.integrations.groq import GroqClient
+from app.integrations.storage import SupabaseStorageClient
 from app.integrations.supabase import SupabaseAuthClient
 from app.repositories.profiles import ProfilesRepository
+from app.repositories.resumes import ResumesRepository
 from app.repositories.roadmaps import RoadmapsRepository
 from app.repositories.skills import SkillsRepository
 from app.services.auth_service import AuthService
 from app.services.roadmap_service import RoadmapService
+from app.services.resume_service import ResumeService
 from app.services.skill_gap_service import SkillGapService
 
 bearer_scheme = HTTPBearer(
@@ -133,3 +136,20 @@ def get_roadmap_service(
         groq=groq,
         settings=settings,
     )
+
+
+def get_resumes_repository() -> ResumesRepository:
+    return ResumesRepository()
+
+
+def get_storage_client(settings: Settings = Depends(get_settings)) -> SupabaseStorageClient:
+    return SupabaseStorageClient(settings)
+
+
+def get_resume_service(
+    resumes: ResumesRepository = Depends(get_resumes_repository),
+    skills: SkillsRepository = Depends(get_skills_repository),
+    storage: SupabaseStorageClient = Depends(get_storage_client),
+    settings: Settings = Depends(get_settings),
+) -> ResumeService:
+    return ResumeService(resumes=resumes, skills=skills, storage=storage, settings=settings)

@@ -50,6 +50,12 @@ export interface RequestOptions {
   method?: HttpMethod;
   /** Serialized as a JSON body. */
   body?: unknown;
+  /**
+   * Sent as `multipart/form-data`. Takes precedence over `body`. The
+   * Content-Type header is left unset so the browser adds the multipart
+   * boundary itself.
+   */
+  formData?: FormData;
   /** Supabase access token, sent as `Authorization: Bearer <token>`. */
   accessToken?: string | null;
   query?: Record<string, string | number | boolean | undefined | null>;
@@ -120,8 +126,10 @@ export class ApiClient {
       headers.Authorization = `Bearer ${options.accessToken}`;
     }
 
-    let body: string | undefined;
-    if (options.body !== undefined) {
+    let body: BodyInit | undefined;
+    if (options.formData) {
+      body = options.formData;
+    } else if (options.body !== undefined) {
       headers["Content-Type"] = "application/json";
       body = JSON.stringify(options.body);
     }

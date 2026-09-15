@@ -163,3 +163,142 @@ export interface CurrentUser {
   profile: Profile | null;
   memberships: Membership[];
 }
+
+// ── Skill gap (Phase 06) ──────────────────────────────────────────────────
+// Source of truth: backend/app/schemas/skills.py
+
+export type SkillPriority = "critical" | "recommended" | "optional";
+export type EvidenceQuality = "none" | "limited" | "moderate" | "strong";
+/** `no_target_role` / `insufficient_requirements` are honest empty states. */
+export type GapStatus = "ok" | "no_target_role" | "insufficient_requirements";
+
+export interface SkillGapItem {
+  skill: string;
+  skill_key: string;
+  priority: SkillPriority;
+  required_level: string | null;
+  current_evidence: string | null;
+  reason: string;
+  recommended_action: string;
+}
+
+/** `GET /skills/gap-analysis`. */
+export interface SkillGapAnalysis {
+  status: GapStatus;
+  target_role: string | null;
+  current_skills: string[];
+  matched_skills: string[];
+  gaps: SkillGapItem[];
+  evidence_quality: EvidenceQuality;
+  evidence_count: number;
+  requirement_count: number;
+  career_twin_stale: boolean;
+  generated_at: string;
+  message: string | null;
+}
+
+// ── Roadmap (Phase 06) ────────────────────────────────────────────────────
+// Source of truth: backend/app/schemas/roadmap.py
+
+export type RoadmapTaskType =
+  | "course"
+  | "project"
+  | "practice"
+  | "reading"
+  | "certification"
+  | "other";
+export type MilestoneStatus = "pending" | "complete";
+
+export interface RoadmapTask {
+  title: string;
+  type: RoadmapTaskType;
+  estimated_hours: number;
+  description: string;
+}
+
+export interface RoadmapWeek {
+  week: number;
+  theme: string;
+  objectives: string[];
+  skills: string[];
+  tasks: RoadmapTask[];
+}
+
+export interface RoadmapPlan {
+  target_role: string;
+  weeks: RoadmapWeek[];
+}
+
+export interface Milestone {
+  id: string;
+  week_number: number;
+  title: string;
+  status: MilestoneStatus;
+  completed_at: string | null;
+  created_at: string | null;
+}
+
+/** `GET /roadmap/latest` and `POST /roadmap/get-roadmap`. */
+export interface Roadmap {
+  id: string;
+  target_role: string;
+  version: number;
+  pace_hours_per_week: number | null;
+  status: string;
+  generated_by: string | null;
+  plan: RoadmapPlan;
+  milestones: Milestone[];
+  career_twin_stale: boolean;
+  created_at: string | null;
+}
+
+// ── Resume (Phase 05) ─────────────────────────────────────────────────────
+// Source of truth: backend/app/schemas/resume.py
+
+export type ResumeSectionStatus = "good" | "warn" | "bad";
+export type ResumeParseStatus = "pending" | "parsed" | "failed";
+export type ResumeAnalysisStatus = "pending" | "complete" | "failed";
+
+export interface ResumeSection {
+  label: string;
+  score: number;
+  status: ResumeSectionStatus;
+}
+
+export interface ResumeImprovements {
+  critical: string[];
+  recommended: string[];
+  optional: string[];
+}
+
+export interface ResumeAnalysis {
+  ats_score: number;
+  quality_score: number;
+  role_fit_score: number | null;
+  sections: ResumeSection[];
+  detected_skills: string[];
+  missing_skills: string[];
+  improvements: ResumeImprovements;
+  word_count: number;
+  target_role: string | null;
+  analyzed_at: string;
+}
+
+export interface Resume {
+  id: string;
+  filename: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  version: number;
+  parse_status: ResumeParseStatus;
+  analysis_status: ResumeAnalysisStatus;
+  storage_path: string | null;
+  content_hash: string;
+  target_role: string | null;
+  analysis: ResumeAnalysis | null;
+  created_at: string | null;
+}
+
+export interface ResumeList {
+  resumes: Resume[];
+}
