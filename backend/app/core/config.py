@@ -46,9 +46,9 @@ class Settings(BaseSettings):
     database_pool_max_size: int = 10
 
     # ── Providers used from later phases ──────────────────────────────────
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
-    gemini_embedding_model: str = ""
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
+
 
     qdrant_url: str = ""
     qdrant_api_key: str = ""
@@ -88,7 +88,7 @@ class Settings(BaseSettings):
             "supabase_auth": bool(self.supabase_url and self.supabase_anon_key),
             "supabase_admin": bool(self.supabase_url and self.supabase_service_role_key),
             "database": bool(self.database_url),
-            "gemini": bool(self.gemini_api_key),
+            "groq": bool(self.groq_api_key),
             "qdrant": bool(self.qdrant_url and self.qdrant_api_key),
             "elevenlabs": bool(self.elevenlabs_api_key),
             "n8n": bool(self.n8n_base_url),

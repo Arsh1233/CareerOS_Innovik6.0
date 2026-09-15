@@ -1,1 +1,1 @@
-"""Third-party and platform integrations (Supabase, Gemini, Qdrant, n8n...)."""
+"""Third-party and platform integrations (Supabase, Groq, Qdrant, n8n...)."""

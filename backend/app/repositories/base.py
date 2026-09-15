@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Sequence
 
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
@@ -60,22 +60,38 @@ async def close_pool() -> None:
         _pool = None
 
 
+def claims_session_statements(
+    claims: dict[str, Any],
+) -> Sequence[tuple[str, tuple[Any, ...]]]:
+    """Statements that reproduce the API's authenticated database context.
+
+    Defined once and reused, so the live RLS tests exercise exactly the same
+    session setup the API uses rather than a hand-rolled approximation.
+
+    1. Leave the table-owning role, which would otherwise bypass RLS.
+    2. Publish the *verified* JWT claims, which `auth.uid()` reads.
+    """
+    subject = str(claims.get("sub", ""))
+    return (
+        ("set local role authenticated", ()),
+        ("select set_config('request.jwt.claims', %s, true)", (json.dumps(claims),)),
+        ("select set_config('request.jwt.claim.sub', %s, true)", (subject,)),
+    )
+
+
+async def apply_claims_session(conn: Any, claims: dict[str, Any]) -> None:
+    """Put an open connection into the authenticated, claims-scoped context."""
+    for statement, params in claims_session_statements(claims):
+        await conn.execute(statement, params)
+
+
 @asynccontextmanager
 async def user_scoped_connection(claims: dict[str, Any]) -> AsyncIterator[Any]:
     """Connection that executes as `authenticated` with the caller's claims."""
     pool = await get_pool()
-    subject = str(claims.get("sub", ""))
     async with pool.connection() as conn:
         async with conn.transaction():
-            # Switch away from the (RLS-bypassing) owning role for this
-            # transaction only, then publish the verified claims.
-            await conn.execute("set local role authenticated")
-            await conn.execute(
-                "select set_config('request.jwt.claims', %s, true)", (json.dumps(claims),)
-            )
-            await conn.execute(
-                "select set_config('request.jwt.claim.sub', %s, true)", (subject,)
-            )
+            await apply_claims_session(conn, claims)
             yield conn
 
 

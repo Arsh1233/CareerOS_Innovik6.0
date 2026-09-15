@@ -18,7 +18,7 @@ backend/
     schemas/           # Pydantic request/response contracts
     services/          # business logic
     repositories/      # SQL through RLS-scoped connections
-    integrations/      # Supabase Auth (Gemini/Qdrant/ElevenLabs/n8n later)
+    integrations/      # Supabase Auth (Groq/Qdrant/ElevenLabs/n8n later)
     agents/            # specialist AI agents (not implemented yet)
   tests/               # pytest suite
   requirements.txt
@@ -42,15 +42,27 @@ The app boots without credentials. `/health` reports exactly which integrations
 are configured, and endpoints that need a missing integration return an
 explicit `503` instead of placeholder data.
 
-## Tests
+## Preflight and tests
 
 ```bash
+# 1. What is configured, and does the schema exist? (never prints secrets)
+./.venv/Scripts/python.exe scripts/preflight.py
+
+# 2. Unit suite — offline, no database, no network  (40 tests)
 ./.venv/Scripts/python.exe -m pytest
+
+# 3. Live Supabase verification — opt-in, requires real credentials
+CAREEROS_LIVE_SUPABASE=1 ./.venv/Scripts/python.exe -m pytest integration_live -v
 ```
 
-Tests never call a live provider: the Supabase integration and the repository
-are replaced through FastAPI dependency overrides. There is no test that
-requires a running database yet — see *Known limitations*.
+The unit suite never calls a live provider: the Supabase integration and the
+repository are replaced through FastAPI dependency overrides, so it proves API
+behaviour but **cannot** prove the SQL or the RLS policies.
+
+The `integration_live/` suite does prove those, against a real project, using
+the same claims-scoped session setup the API uses. It lives outside `testpaths`
+and skips unless explicitly opted in, so CI never depends on live Supabase. See
+`integration_live/README.md` for exactly what it verifies.
 
 ## Authorisation model
 
@@ -102,8 +114,13 @@ college/admin) is **not implemented** yet.
 
 ## Known limitations
 
-* No live-database test exists: the SQL and RLS policies are written but have
-  not been executed against a real Supabase project from this environment.
+* **Not yet run against a real Supabase project from this environment.** The SQL
+  and RLS policies are written and the live suite exists, but the identity
+  migration has not been applied to a project here and no credentials are
+  configured, so live auth and RLS are **unproven**.
+* No token refresh: Supabase access tokens are stateless, so revocation ends the
+  refresh session while the access token stays valid until it expires; the
+  frontend clears local state regardless. A refresh endpoint is a later item.
 * Google OAuth sign-in is not wired; users created outside `/auth/signup` have
   no `app_metadata.role` and therefore receive `403 role_not_assigned`.
 * College staff cannot yet read student profile fields (a scoped view is

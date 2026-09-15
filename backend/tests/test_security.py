@@ -145,7 +145,7 @@ def test_capability_report_never_leaks_secret_values() -> None:
         "supabase_auth",
         "supabase_admin",
         "database",
-        "gemini",
+        "groq",
         "qdrant",
         "elevenlabs",
         "n8n",

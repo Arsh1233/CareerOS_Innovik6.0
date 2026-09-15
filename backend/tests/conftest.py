@@ -22,6 +22,7 @@ os.environ.setdefault("SUPABASE_ANON_KEY", "test-anon-key")
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key")
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-jwt-secret-please-change-me")
 os.environ.setdefault("CORS_ALLOWED_ORIGINS", "http://localhost:8443")
+os.environ["DATABASE_URL"] = ""
 
 import jwt  # noqa: E402  (import after env setup)
 
