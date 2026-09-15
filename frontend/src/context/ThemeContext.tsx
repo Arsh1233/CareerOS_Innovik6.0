@@ -17,11 +17,7 @@ const ThemeContext = createContext<ThemeContextValue>({
 });
 
 function getSystemDark(): boolean {
-  try {
-    return window.matchMedia("(prefers-color-scheme: dark)").matches;
-  } catch {
-    return false;
-  }
+  return false; // Force light mode globally
 }
 
 function resolveIsDark(t: Theme): boolean {
@@ -42,9 +38,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [isDark, setIsDark] = useState(() => resolveIsDark(theme));
 
   const applyDark = useCallback((dark: boolean) => {
-    setIsDark(dark);
-    if (dark) document.documentElement.classList.add("dark");
-    else document.documentElement.classList.remove("dark");
+    // Force light mode
+    setIsDark(false);
+    document.documentElement.classList.remove("dark");
   }, []);
 
   useEffect(() => {
