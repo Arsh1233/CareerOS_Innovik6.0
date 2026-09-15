@@ -1,7 +1,7 @@
 """Test configuration.
 
 Environment is set before the application is imported so `Settings` resolves
-without a live Supabase project. Tests never talk to a real provider: the
+without a live Supabase project.  Tests never talk to a real provider: the
 Supabase integration and the repository are replaced through dependency
 overrides.
 """
@@ -23,6 +23,7 @@ os.environ.setdefault("SUPABASE_ANON_KEY", "test-anon-key")
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key")
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-jwt-secret-please-change-me")
 os.environ.setdefault("CORS_ALLOWED_ORIGINS", "http://localhost:8443")
+os.environ["DATABASE_URL"] = ""
 
 import jwt  # noqa: E402  (import after env setup)
 

@@ -7,26 +7,15 @@
 //   ✗ authService     → src/lib/api/auth.ts    (FastAPI /auth/*)
 //   ✗ profileService  → src/lib/api/users.ts   (FastAPI /users/*)
 //
-// Still mocked here (awaiting their phases): resumeService, skillsService,
+//   ✗ resumeService   → src/lib/api/resumes.ts (FastAPI /resumes/*)
+//
+// Still mocked here (awaiting their phases): skillsService,
 // roadmapService, jobsService, notificationService, collegeService,
 // recruiterService, adminService, supportService, subscriptionService.
 
 function delay<T>(value: T, ms = 1000): Promise<T> {
   return new Promise((res) => setTimeout(() => res(value), ms));
 }
-
-// ── Resume ────────────────────────────────────────────────────────────────
-
-export const resumeService = {
-  upload: (file: File) =>
-    delay({ success: true, filename: file.name, score: 81 }, 1800),
-  analyze: (filename: string) =>
-    delay({ success: true, filename, ats: 81, quality: 76, roleFit: 71 }, 1600),
-  improve: () =>
-    delay({ success: true, suggestions: [] }, 1000),
-  remove: () =>
-    delay({ success: true }, 600),
-};
 
 // ── Skills ────────────────────────────────────────────────────────────────
 

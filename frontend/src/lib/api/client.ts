@@ -48,14 +48,8 @@ export interface ApiClientOptions {
 
 export interface RequestOptions {
   method?: HttpMethod;
-  /** Serialized as a JSON body. */
-  body?: unknown;
-  /**
-   * Sent as `multipart/form-data`. Takes precedence over `body`. The
-   * Content-Type header is left unset so the browser adds the multipart
-   * boundary itself.
-   */
-  formData?: FormData;
+  /** Serialized as a JSON body, unless it is FormData which is sent as-is. */
+  body?: unknown | FormData;
   /** Supabase access token, sent as `Authorization: Bearer <token>`. */
   accessToken?: string | null;
   query?: Record<string, string | number | boolean | undefined | null>;
@@ -126,12 +120,15 @@ export class ApiClient {
       headers.Authorization = `Bearer ${options.accessToken}`;
     }
 
-    let body: BodyInit | undefined;
-    if (options.formData) {
-      body = options.formData;
-    } else if (options.body !== undefined) {
-      headers["Content-Type"] = "application/json";
-      body = JSON.stringify(options.body);
+    let body: string | FormData | undefined;
+    if (options.body !== undefined) {
+      if (options.body instanceof FormData) {
+        // Browser fetch automatically sets the correct Content-Type with boundary for FormData
+        body = options.body;
+      } else {
+        headers["Content-Type"] = "application/json";
+        body = JSON.stringify(options.body);
+      }
     }
 
     const timeoutController = new AbortController();

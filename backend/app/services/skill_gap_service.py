@@ -1,143 +1,212 @@
-"""Deterministic skill-gap analysis.
+"""Skill Gap Analysis service.
 
-No model is involved. Inputs are read server-side — the caller's profile target
-role, the persisted `skills` and `skill_evidence` rows, and the sourced
-`role_required_skills` for that role. Nothing is invented:
+Deterministic where possible — gaps are computed from persisted skill evidence
+vs. verified role requirements.  No AI call is made here.
 
-* a required skill with no recorded evidence is a gap, with a reason;
-* a matched skill only means evidence exists — the response never asserts a
-  proficiency level for it;
-* a role with no requirement set produces `insufficient_requirements`, not
-  fabricated gaps.
+Rules:
+- Evidence comes from the skills table (populated by resume ingestion).
+- Requirements come from role_required_skills migration seed.
+- Resume mention ≠ mastery — we never invent a proficiency level.
+- If no role is set: honest no_role state.
+- If no requirements exist for the role: honest no_requirements state.
+- Student identity is always from the JWT — never from a request parameter.
 """
 
 from __future__ import annotations
 
-import re
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from app.repositories.profiles import ProfilesRepository
+from app.repositories.role_requirements import RoleRequirementsRepository
 from app.repositories.skills import SkillsRepository
-from app.schemas.skills import EvidenceQuality, SkillGapItem, SkillGapResponse
+from app.schemas.skills_roadmap import (
+    CurrentSkill,
+    MatchedSkill,
+    SkillGap,
+    SkillGapResponse,
+)
 
-_PRIORITY_ORDER = {"critical": 0, "recommended": 1, "optional": 2}
+logger = logging.getLogger("careeros.skill_gap_service")
+
+IMPORTANCE_PRIORITY_MAP = {
+    "critical": "critical",
+    "recommended": "recommended",
+    "optional": "optional",
+}
 
 
-def normalize_skill_key(name: str) -> str:
-    """Canonical key shared with the migration seed and resume ingestion."""
-    return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+def _normalise(name: str) -> str:
+    """Lowercase + strip for comparison. Same logic used when inserting skills."""
+    return name.lower().strip()
 
 
 class SkillGapService:
-    def __init__(self, skills: SkillsRepository) -> None:
-        self._skills = skills
+    """Computes skill gap analysis deterministically from persisted data."""
 
-    async def analyze(self, claims: dict[str, Any], user_id: str) -> SkillGapResponse:
-        now = datetime.now(timezone.utc)
-        profile = await self._skills.get_profile_context(claims, user_id)
-        target_role = (profile or {}).get("target_role_name") or None
-        twin_stale = bool((profile or {}).get("career_twin_stale") or False)
+    def __init__(
+        self,
+        profiles_repo: ProfilesRepository,
+        skills_repo: SkillsRepository,
+        role_requirements_repo: RoleRequirementsRepository,
+    ) -> None:
+        self._profiles = profiles_repo
+        self._skills = skills_repo
+        self._requirements = role_requirements_repo
 
-        if not target_role:
+    async def get_gap_analysis(
+        self,
+        claims: dict[str, Any],
+        access_token: str,
+    ) -> SkillGapResponse:
+        """Compute skill gap for the authenticated student.
+
+        Returns an honest result — never fabricates gaps or proficiency.
+        """
+        user_id = str(claims["sub"])
+        enriched_claims = {**claims, "_access_token": access_token}
+
+        # 1. Get profile to find target role
+        profile = await self._profiles.get_by_user_id(enriched_claims, user_id)
+        target_role_name: str | None = profile.get("target_role_name") if profile else None
+
+        if not target_role_name:
             return SkillGapResponse(
-                status="no_target_role",
-                generated_at=now,
-                career_twin_stale=twin_stale,
-                message="Choose a target role to see which skills you still need.",
+                target_role="(not set)",
+                current_skills=[],
+                matched_skills=[],
+                gaps=[],
+                total_required=0,
+                matched_count=0,
+                gap_count=0,
+                evidence_quality="no_role",
+                generated_at=datetime.now(timezone.utc),
             )
 
-        requirement = await self._skills.get_latest_role_requirement(claims, target_role)
-        if requirement is None:
+        # 2. Load role requirements
+        requirements = await self._requirements.get_requirements_for_role(
+            access_token, target_role_name
+        )
+
+        if not requirements:
+            # Honest: no requirements seeded for this role
             return SkillGapResponse(
-                status="insufficient_requirements",
-                target_role=target_role,
-                generated_at=now,
-                career_twin_stale=twin_stale,
-                message=(
-                    "No skill requirements are recorded for this role yet, so gaps "
-                    "cannot be calculated. Nothing has been assumed."
+                target_role=target_role_name,
+                current_skills=[],
+                matched_skills=[],
+                gaps=[],
+                total_required=0,
+                matched_count=0,
+                gap_count=0,
+                evidence_quality="no_requirements",
+                generated_at=datetime.now(timezone.utc),
+            )
+
+        # 3. Load student's skills from the database
+        skill_rows = await self._skills.list_skills(enriched_claims, user_id)
+
+        # Build a set of normalised keys the student has evidence for
+        student_skill_keys: dict[str, dict[str, Any]] = {
+            _normalise(row.get("normalized_skill_key", row.get("display_name", ""))): row
+            for row in skill_rows
+        }
+
+        current_skills: list[CurrentSkill] = [
+            CurrentSkill(
+                skill=row.get("display_name", ""),
+                normalized_key=_normalise(
+                    row.get("normalized_skill_key", row.get("display_name", ""))
                 ),
+                evidence_summary=row.get("source_summary") or None,
             )
+            for row in skill_rows
+        ]
 
-        required = await self._skills.list_required_skills(claims, str(requirement["id"]))
-        if not required:
-            return SkillGapResponse(
-                status="insufficient_requirements",
-                target_role=str(requirement.get("role_name") or target_role),
-                generated_at=now,
-                career_twin_stale=twin_stale,
-                message=(
-                    "This role has no required-skill set recorded yet, so gaps cannot "
-                    "be calculated."
-                ),
-            )
+        # 4. Match requirements against student skills
+        matched: list[MatchedSkill] = []
+        gaps: list[SkillGap] = []
 
-        user_skills = await self._skills.list_user_skills(claims, user_id)
-        evidence = await self._skills.list_evidence(claims, user_id)
+        for req in requirements:
+            req_key = _normalise(req.get("skill_name", ""))
+            req_display = req.get("display_name", req.get("skill_name", ""))
+            importance = req.get("importance", "optional")
+            priority = IMPORTANCE_PRIORITY_MAP.get(importance, "optional")
+            min_level: str | None = req.get("minimum_level")
 
-        owned_keys = {str(row["skill_key"]) for row in user_skills}
-        evidenced_keys = {str(row["skill_key"]) for row in evidence}
-
-        matched: list[str] = []
-        gaps: list[SkillGapItem] = []
-        for req in required:
-            key = str(req["skill_key"])
-            if key in owned_keys or key in evidenced_keys:
-                matched.append(str(req["skill_name"]))
-                continue
-            importance = str(req.get("importance") or "recommended")
-            gaps.append(
-                SkillGapItem(
-                    skill=str(req["skill_name"]),
-                    skill_key=key,
-                    priority=importance,  # type: ignore[arg-type]
-                    required_level=req.get("minimum_level"),
-                    current_evidence=None,
-                    reason=_reason(importance, req.get("minimum_level")),
-                    recommended_action=_action(importance),
+            if req_key in student_skill_keys:
+                student_row = student_skill_keys[req_key]
+                matched.append(
+                    MatchedSkill(
+                        skill=req_display,
+                        normalized_key=req_key,
+                        evidence_summary=student_row.get("source_summary") or None,
+                    )
                 )
-            )
+            else:
+                # Try fuzzy partial match (simple substring matching)
+                fuzzy_match = None
+                for student_key, student_row in student_skill_keys.items():
+                    if req_key in student_key or student_key in req_key:
+                        fuzzy_match = student_row
+                        break
 
-        gaps.sort(key=lambda item: (_PRIORITY_ORDER.get(item.priority, 3), item.skill.lower()))
+                if fuzzy_match:
+                    matched.append(
+                        MatchedSkill(
+                            skill=req_display,
+                            normalized_key=req_key,
+                            evidence_summary=fuzzy_match.get("source_summary") or "Partially evidenced",
+                        )
+                    )
+                else:
+                    gaps.append(
+                        SkillGap(
+                            skill=req_display,
+                            normalized_key=req_key,
+                            priority=priority,  # type: ignore[arg-type]
+                            required_level=min_level,
+                            current_evidence=None,  # No evidence found — honest
+                            reason=f"Required for {target_role_name} but not found in your resume or profile evidence.",
+                            recommended_action=_recommend_action(req_display, priority),
+                        )
+                    )
+
+        # 5. Sort gaps by priority
+        priority_order = {"critical": 0, "recommended": 1, "optional": 2}
+        gaps.sort(key=lambda g: priority_order.get(g.priority, 9))
+
+        # 6. Determine evidence quality
+        total = len(requirements)
+        matched_count = len(matched)
+        gap_count = len(gaps)
+
+        if matched_count == 0 and gap_count == 0:
+            quality = "no_requirements"
+        elif matched_count / total >= 0.7:
+            quality = "sufficient"
+        elif matched_count / total >= 0.3:
+            quality = "partial"
+        else:
+            quality = "insufficient"
 
         return SkillGapResponse(
-            status="ok",
-            target_role=str(requirement.get("role_name") or target_role),
-            current_skills=[str(row["skill_name"]) for row in user_skills],
+            target_role=target_role_name,
+            current_skills=current_skills,
             matched_skills=matched,
             gaps=gaps,
-            evidence_quality=_quality(len(matched), len(required)),
-            evidence_count=len(matched),
-            requirement_count=len(required),
-            career_twin_stale=twin_stale,
-            generated_at=now,
-            message=None,
+            total_required=total,
+            matched_count=matched_count,
+            gap_count=gap_count,
+            evidence_quality=quality,
+            generated_at=datetime.now(timezone.utc),
         )
 
 
-def _reason(importance: str, minimum_level: str | None) -> str:
-    level = f" (target level: {minimum_level})" if minimum_level else ""
-    if importance == "critical":
-        return f"Core requirement for this role{level} and no evidence is recorded yet."
-    if importance == "recommended":
-        return f"Expected for this role{level} but no evidence is recorded yet."
-    return f"Optional for this role{level}; no evidence is recorded yet."
-
-
-def _action(importance: str) -> str:
-    if importance == "critical":
-        return "Prioritise this: complete a course or project and record it as evidence."
-    if importance == "recommended":
-        return "Plan a focused course or project and record the outcome as evidence."
-    return "Address this once the critical gaps are closed."
-
-
-def _quality(evidence_count: int, requirement_count: int) -> EvidenceQuality:
-    if requirement_count <= 0 or evidence_count <= 0:
-        return "none"
-    ratio = evidence_count / requirement_count
-    if ratio < 0.34:
-        return "limited"
-    if ratio < 0.67:
-        return "moderate"
-    return "strong"
+def _recommend_action(skill: str, priority: str) -> str:
+    """Generate a short recommended action string. Honest — never guarantees outcomes."""
+    if priority == "critical":
+        return f"Build practical {skill} experience through projects, courses, or work — this is a core requirement."
+    if priority == "recommended":
+        return f"Add {skill} to your learning roadmap to strengthen your profile for this role."
+    return f"Consider learning {skill} as an optional enhancement for this role."

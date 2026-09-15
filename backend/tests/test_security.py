@@ -144,8 +144,9 @@ def test_capability_report_never_leaks_secret_values() -> None:
     assert set(capabilities) == {
         "supabase_auth",
         "supabase_admin",
+        "supabase_storage",
         "database",
-        "gemini",
+        "groq",
         "qdrant",
         "elevenlabs",
         "n8n",

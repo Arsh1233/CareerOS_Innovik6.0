@@ -1,153 +1,217 @@
-"""Roadmap and milestone persistence.
+"""Roadmap and milestone persistence via Supabase PostgREST.
 
-All statements run under the caller's RLS context: `roadmaps` and
-`roadmap_milestones` are only readable/writable for rows whose `user_id` matches
-the verified token subject. Creating a roadmap archives the previous active one
-so `latest` is unambiguous.
+Every user-scoped request carries the authenticated user's JWT.
+RLS policies enforce ownership at the database level.
+
+    FastAPI → Supabase PostgREST → RLS → PostgreSQL
 """
 
 from __future__ import annotations
 
-import json
+import logging
+from datetime import datetime, timezone
 from typing import Any
 
-from app.repositories.base import user_scoped_connection
+from app.integrations.postgrest import PostgRESTClient
 
-_ROADMAP_COLUMNS = (
-    "id, user_id, target_role_name, requirements_version, version, "
-    "pace_hours_per_week, plan, status, generated_by, created_at"
+logger = logging.getLogger("careeros.roadmaps_repo")
+
+ROADMAP_COLUMNS: tuple[str, ...] = (
+    "id",
+    "user_id",
+    "target_role",
+    "version",
+    "pace_hours_per_week",
+    "plan",
+    "status",
+    "model_provider",
+    "model_name",
+    "prompt_version",
+    "created_at",
+    "updated_at",
 )
 
-_MILESTONE_COLUMNS = "id, week_number, title, status, completed_at, created_at"
+MILESTONE_COLUMNS: tuple[str, ...] = (
+    "id",
+    "roadmap_id",
+    "user_id",
+    "week_number",
+    "title",
+    "description",
+    "status",
+    "completed_at",
+    "created_at",
+    "updated_at",
+)
 
 
 class RoadmapsRepository:
-    async def create_roadmap(
+    """Reads/writes roadmap records via Supabase PostgREST."""
+
+    def __init__(self, postgrest: PostgRESTClient | None = None) -> None:
+        self._postgrest = postgrest
+
+    async def _client(self) -> PostgRESTClient:
+        if self._postgrest is None:
+            from app.core.config import get_settings
+            self._postgrest = PostgRESTClient(get_settings())
+        return self._postgrest
+
+    async def create(
         self,
         claims: dict[str, Any],
-        user_id: str,
         *,
-        target_role_name: str,
-        requirements_version: int | None,
-        pace_hours_per_week: int | None,
+        user_id: str,
+        target_role: str,
+        pace_hours_per_week: int,
         plan: dict[str, Any],
-        generated_by: str | None,
-        milestones: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        async with user_scoped_connection(claims) as conn:
-            cursor = await conn.execute(
-                "select coalesce(max(version), 0) + 1 as next_version "
-                "from public.roadmaps where user_id = %s",
-                (user_id,),
-            )
-            row = await cursor.fetchone()
-            next_version = int((row or {}).get("next_version") or 1)
+        model_provider: str = "groq",
+        model_name: str = "",
+        prompt_version: str = "v1",
+    ) -> dict[str, Any] | None:
+        """Insert a new roadmap and return the persisted row."""
+        client = await self._client()
+        access_token = claims.get("_access_token", "")
 
-            # Supersede the previous active roadmap so `latest` stays unique.
-            await conn.execute(
-                "update public.roadmaps set status = 'archived', updated_at = now() "
-                "where user_id = %s and status = 'active'",
-                (user_id,),
-            )
+        # Archive any previous active roadmap first
+        await client.update(
+            "roadmaps",
+            access_token,
+            filters={
+                "user_id": f"eq.{user_id}",
+                "status": "eq.active",
+            },
+            payload={"status": "archived"},
+        )
 
-            cursor = await conn.execute(
-                f"""
-                insert into public.roadmaps
-                  (user_id, target_role_name, requirements_version, version,
-                   pace_hours_per_week, plan, generated_by)
-                values (%s, %s, %s, %s, %s, %s::jsonb, %s)
-                returning {_ROADMAP_COLUMNS}
-                """,
-                (
-                    user_id,
-                    target_role_name,
-                    requirements_version,
-                    next_version,
-                    pace_hours_per_week,
-                    json.dumps(plan),
-                    generated_by,
-                ),
-            )
-            created = await cursor.fetchone()
-            if created is None:
-                return {}
+        return await client.insert(
+            "roadmaps",
+            access_token,
+            payload={
+                "user_id": user_id,
+                "target_role": target_role,
+                "pace_hours_per_week": pace_hours_per_week,
+                "plan": plan,
+                "status": "active",
+                "model_provider": model_provider,
+                "model_name": model_name,
+                "prompt_version": prompt_version,
+            },
+        )
 
-            if milestones:
-                await conn.executemany(
-                    """
-                    insert into public.roadmap_milestones
-                      (roadmap_id, user_id, week_number, title)
-                    values (%s, %s, %s, %s)
-                    on conflict (roadmap_id, week_number) do nothing
-                    """,
-                    [
-                        (created["id"], user_id, int(m["week_number"]), str(m["title"]))
-                        for m in milestones
-                    ],
-                )
-            return created
-
-    async def get_latest(self, claims: dict[str, Any], user_id: str) -> dict[str, Any] | None:
-        async with user_scoped_connection(claims) as conn:
-            cursor = await conn.execute(
-                f"""
-                select r.id, r.user_id, r.target_role_name, r.requirements_version,
-                       r.version, r.pace_hours_per_week, r.plan, r.status,
-                       r.generated_by, r.created_at,
-                       coalesce(p.career_twin_stale, false) as career_twin_stale
-                from public.roadmaps r
-                left join public.profiles p on p.user_id = r.user_id
-                where r.user_id = %s and r.status = 'active'
-                order by r.created_at desc
-                limit 1
-                """,
-                (user_id,),
-            )
-            roadmap = await cursor.fetchone()
-            if roadmap is None:
-                return None
-
-            cursor = await conn.execute(
-                f"""
-                select {_MILESTONE_COLUMNS}
-                from public.roadmap_milestones
-                where roadmap_id = %s
-                order by week_number asc
-                """,
-                (roadmap["id"],),
-            )
-            roadmap["milestones"] = list(await cursor.fetchall())
-            return roadmap
-
-    async def update_milestone(
+    async def get_latest(
         self,
         claims: dict[str, Any],
         user_id: str,
+    ) -> dict[str, Any] | None:
+        """Get the most recent active roadmap for the user."""
+        client = await self._client()
+        access_token = claims.get("_access_token", "")
+        select_list = ",".join(ROADMAP_COLUMNS)
+        rows = await client.select(
+            "roadmaps",
+            access_token,
+            columns=select_list,
+            filters={
+                "user_id": f"eq.{user_id}",
+                "order": "created_at.desc",
+            },
+            limit=1,
+        )
+        return rows[0] if rows else None
+
+    async def mark_stale(
+        self,
+        claims: dict[str, Any],
+        roadmap_id: str,
+    ) -> dict[str, Any] | None:
+        """Mark a roadmap as stale (Career Twin staleness propagation)."""
+        client = await self._client()
+        access_token = claims.get("_access_token", "")
+        return await client.update(
+            "roadmaps",
+            access_token,
+            filters={"id": f"eq.{roadmap_id}"},
+            payload={"status": "stale"},
+        )
+
+    # ── Milestones ────────────────────────────────────────────────────────
+
+    async def create_milestones(
+        self,
+        claims: dict[str, Any],
+        milestones: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Bulk-insert milestones. Returns what was inserted (best-effort list)."""
+        client = await self._client()
+        access_token = claims.get("_access_token", "")
+        results = []
+        for m in milestones:
+            try:
+                row = await client.insert("roadmap_milestones", access_token, payload=m)
+                if row:
+                    results.append(row)
+            except Exception as exc:
+                logger.warning("milestone_insert_failed title=%s error=%s", m.get("title"), exc)
+        return results
+
+    async def list_milestones(
+        self,
+        claims: dict[str, Any],
+        roadmap_id: str,
+    ) -> list[dict[str, Any]]:
+        """Return all milestones for a roadmap, ordered by week then insertion."""
+        client = await self._client()
+        access_token = claims.get("_access_token", "")
+        select_list = ",".join(MILESTONE_COLUMNS)
+        return await client.select(
+            "roadmap_milestones",
+            access_token,
+            columns=select_list,
+            filters={
+                "roadmap_id": f"eq.{roadmap_id}",
+                "order": "week_number.asc,created_at.asc",
+            },
+            limit=500,
+        )
+
+    async def get_milestone(
+        self,
+        claims: dict[str, Any],
+        milestone_id: str,
+    ) -> dict[str, Any] | None:
+        """Fetch a single milestone by ID."""
+        client = await self._client()
+        access_token = claims.get("_access_token", "")
+        select_list = ",".join(MILESTONE_COLUMNS)
+        rows = await client.select(
+            "roadmap_milestones",
+            access_token,
+            columns=select_list,
+            filters={"id": f"eq.{milestone_id}"},
+            limit=1,
+        )
+        return rows[0] if rows else None
+
+    async def update_milestone_status(
+        self,
+        claims: dict[str, Any],
         milestone_id: str,
         status: str,
     ) -> dict[str, Any] | None:
-        async with user_scoped_connection(claims) as conn:
-            cursor = await conn.execute(
-                f"""
-                update public.roadmap_milestones
-                set status = %s,
-                    completed_at = case when %s = 'complete' then now() else null end,
-                    updated_at = now()
-                where id = %s and user_id = %s
-                returning {_MILESTONE_COLUMNS}
-                """,
-                (status, status, milestone_id, user_id),
-            )
-            milestone = await cursor.fetchone()
-            if milestone is None:
-                return None
+        """Patch milestone status. Sets completed_at when marking completed."""
+        client = await self._client()
+        access_token = claims.get("_access_token", "")
 
-            # Learning progress changed: the Twin is now stale but is NOT
-            # regenerated here. Completion is never treated as skill mastery.
-            if status == "complete":
-                await conn.execute(
-                    "update public.profiles set career_twin_stale = true, updated_at = now() "
-                    "where user_id = %s",
-                    (user_id,),
-                )
-            return milestone
+        payload: dict[str, Any] = {"status": status}
+        if status == "completed":
+            payload["completed_at"] = datetime.now(timezone.utc).isoformat()
+        elif status in ("pending", "in_progress"):
+            payload["completed_at"] = None
+
+        return await client.update(
+            "roadmap_milestones",
+            access_token,
+            filters={"id": f"eq.{milestone_id}"},
+            payload=payload,
+        )

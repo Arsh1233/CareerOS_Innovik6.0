@@ -112,8 +112,12 @@ class AuthService:
                 "This account has no CareerOS role assigned. Please contact support.",
             )
 
-        profile_row = await self._profiles.get_by_user_id(claims, user_id)
-        membership_rows = await self._profiles.list_memberships(claims, user_id)
+        # Pass the access_token through claims so the PostgREST repository
+        # can use it for authenticated database queries.
+        enriched_claims = {**claims, "_access_token": access_token}
+
+        profile_row = await self._profiles.get_by_user_id(enriched_claims, user_id)
+        membership_rows = await self._profiles.list_memberships(enriched_claims, user_id)
 
         profile = _profile_from_row(profile_row) if profile_row else None
         return CurrentUserResponse(
@@ -131,14 +135,17 @@ class AuthService:
     # ── profile mutation ──────────────────────────────────────────────────
 
     async def update_profile(
-        self, claims: dict[str, Any], payload: ProfileUpdateRequest
+        self, claims: dict[str, Any], access_token: str, payload: ProfileUpdateRequest
     ) -> ProfileOut:
         user_id = str(claims["sub"])
         fields = payload.model_dump(exclude_unset=True)
         if not fields:
             raise ApiError(400, "empty_update", "Provide at least one profile field to update.")
 
-        row = await self._profiles.update_fields(claims, user_id, fields)
+        # Pass the access_token through claims for PostgREST.
+        enriched_claims = {**claims, "_access_token": access_token}
+
+        row = await self._profiles.update_fields(enriched_claims, user_id, fields)
         if row is None:
             raise ApiError(404, "profile_not_found", "No profile exists for this account.")
         return _profile_from_row(row)

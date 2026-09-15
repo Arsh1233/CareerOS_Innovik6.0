@@ -101,7 +101,7 @@ function StudentLoginForm({ onSuccess }: { onSuccess: () => void }) {
       <div className="flex items-center justify-between">
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="w-3.5 h-3.5 rounded accent-[#4F7CFF]" />
-          <span className="text-xs text-[#667085]">Remember me</span>
+          <span className="text-xs text-[#101828]">Remember me</span>
         </label>
         <button type="button" onClick={() => setForgotSent(true)} className="text-xs text-[#4F7CFF] hover:underline font-medium">
           Forgot password?
@@ -266,7 +266,7 @@ function CollegeSignupForm({ onSuccess }: { onSuccess: () => void }) {
           <Mail size={22} className="text-[#6E72E8]" />
         </div>
         <p className="font-display font-semibold text-[#101828]">Verify your institutional email</p>
-        <p className="text-sm text-[#667085]">We sent a verification link to <strong>{f.email}</strong>. Check your inbox and click the link to continue.</p>
+        <p className="text-sm text-[#101828]">We sent a verification link to <strong>{f.email}</strong>. Check your inbox and click the link to continue.</p>
         <div className="flex items-center justify-center gap-2 text-xs text-[#98A2B3]">
           <Loader2 size={12} className="animate-spin" /> Waiting for verification...
         </div>
@@ -477,9 +477,9 @@ export default function AuthPage() {
       return (
         <div className="py-4 text-center space-y-3">
           <div className="w-10 h-10 rounded-xl bg-[#475467]/10 flex items-center justify-center mx-auto">
-            <ShieldCheck size={18} className="text-[#475467]" />
+            <ShieldCheck size={18} className="text-[#101828]" />
           </div>
-          <p className="text-sm text-[#667085]">Admin accounts require secure login.</p>
+          <p className="text-sm text-[#101828]">Admin accounts require secure login.</p>
           <Link
             to="/admin"
             className="w-full py-2.5 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all"
@@ -590,7 +590,7 @@ export default function AuthPage() {
               <h2 className="font-display text-lg font-bold text-[#101828]">
                 {mode === "login" ? `Welcome back` : `Join as ${roleConfig[role].label}`}
               </h2>
-              <p className="text-xs text-[#667085] mt-0.5">{cfg.tagline}</p>
+              <p className="text-xs text-[#101828] mt-0.5">{cfg.tagline}</p>
             </div>
 
             {/* Dynamic form */}
@@ -599,7 +599,7 @@ export default function AuthPage() {
             </div>
 
             {role !== "admin" && (
-              <p className="text-center text-xs text-[#667085] mt-5">
+              <p className="text-center text-xs text-[#101828] mt-5">
                 {mode === "login" ? "Don't have an account?" : "Already have an account?"}{" "}
                 <button
                   onClick={() => setMode(mode === "login" ? "signup" : "login")}
@@ -614,8 +614,8 @@ export default function AuthPage() {
 
           <p className="text-center text-xs text-[#98A2B3] mt-4">
             By continuing you agree to CareerOS{" "}
-            <span className="text-[#667085] underline cursor-pointer">Terms</span> &{" "}
-            <span className="text-[#667085] underline cursor-pointer">Privacy Policy</span>
+            <span className="text-[#101828] underline cursor-pointer">Terms</span> &{" "}
+            <span className="text-[#101828] underline cursor-pointer">Privacy Policy</span>
           </p>
         </div>
       </div>

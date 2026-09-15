@@ -174,6 +174,28 @@ class SupabaseAuthClient:
             logger.warning("supabase_admin_update_role_failed status=%s", response.status_code)
             raise ApiError(503, "auth_provider_unavailable", "Role update failed.")
 
+    async def admin_delete_user(self, user_id: str) -> bool:
+        """Delete an account and its cascading rows.
+
+        Used by the live verification suite to clean up the accounts it creates.
+        Returns False when the provider reports the user is already gone.
+        """
+        self._require_admin_config()
+        response = await self._request(
+            "DELETE",
+            f"/auth/v1/admin/users/{user_id}",
+            headers={
+                "apikey": self._settings.supabase_service_role_key,
+                "Authorization": f"Bearer {self._settings.supabase_service_role_key}",
+            },
+        )
+        if response.status_code in (200, 204):
+            return True
+        if response.status_code == 404:
+            return False
+        logger.warning("supabase_admin_delete_user_failed status=%s", response.status_code)
+        raise ApiError(503, "auth_provider_unavailable", "Account cleanup failed.")
+
     async def request_password_reset(self, email: str) -> None:
         self._require_auth_config()
         response = await self._request(

@@ -46,18 +46,20 @@ class Settings(BaseSettings):
     database_pool_max_size: int = 10
 
     # ── Providers used from later phases ──────────────────────────────────
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
-    gemini_embedding_model: str = ""
-
-    # ── Groq (structured generation for the roadmap, Phase 06) ────────────
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
-    groq_base_url: str = "https://api.groq.com/openai/v1"
-    groq_timeout_seconds: float = 45.0
 
     qdrant_url: str = ""
     qdrant_api_key: str = ""
+
+    # ── Resume Intelligence (Phase 05) ────────────────────────────────────
+    resume_max_file_mb: int = 10
+    resume_bucket: str = "resumes"
+
+    # ── Embedding contract (project-wide — do NOT change without versioning)
+    # Model: BAAI/bge-small-en-v1.5  |  Dimension: 384  |  Distance: Cosine
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    qdrant_resume_collection: str = "resume_embeddings"
 
     elevenlabs_api_key: str = ""
 
@@ -67,7 +69,7 @@ class Settings(BaseSettings):
     langsmith_api_key: str = ""
     langsmith_project: str = "careeros"
 
-    @field_validator("supabase_url", "n8n_base_url", "qdrant_url", "groq_base_url")
+    @field_validator("supabase_url", "n8n_base_url", "qdrant_url")
     @classmethod
     def _strip_trailing_slash(cls, value: str) -> str:
         return value.rstrip("/")
@@ -93,8 +95,8 @@ class Settings(BaseSettings):
         return {
             "supabase_auth": bool(self.supabase_url and self.supabase_anon_key),
             "supabase_admin": bool(self.supabase_url and self.supabase_service_role_key),
+            "supabase_storage": bool(self.supabase_url and self.supabase_service_role_key),
             "database": bool(self.database_url),
-            "gemini": bool(self.gemini_api_key),
             "groq": bool(self.groq_api_key),
             "qdrant": bool(self.qdrant_url and self.qdrant_api_key),
             "elevenlabs": bool(self.elevenlabs_api_key),
