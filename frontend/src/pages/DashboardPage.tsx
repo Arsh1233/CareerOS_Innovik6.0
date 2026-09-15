@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
 import {
   ArrowRight, Zap, BookOpen, Mic2, Briefcase,
-  TrendingUp, Clock, Star, ChevronRight, Sparkles,
+  TrendingUp, Clock, Star, ChevronRight, Sparkles, Loader2,
 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { skillsApi, type SkillGapResponse } from "../lib/api/skills";
 
 function CircularProgress({ value, size = 96 }: { value: number; size?: number }) {
   const r = (size - 12) / 2;
@@ -61,21 +63,87 @@ function SkillBar({ label, value, required }: { label: string; value: number; re
   );
 }
 
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function formatDate(): string {
+  return new Date().toLocaleDateString("en-IN", {
+    weekday: "long", day: "numeric", month: "short", year: "numeric",
+  });
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const { user, profile, accessToken } = useAuth();
+  const [gapData, setGapData] = useState<SkillGapResponse | null>(null);
+  const [gapLoading, setGapLoading] = useState(false);
 
-  const skills = [
-    { label: "MLOps & Model Deployment", value: 45, required: 80 },
-    { label: "System Design", value: 60, required: 85 },
-    { label: "LLM Fine-tuning", value: 30, required: 70 },
-  ];
+  const firstName = user?.name?.split(" ")[0] ?? "there";
+  const targetRole = profile?.target_role_name ?? null;
+
+  const loadGaps = useCallback(async () => {
+    if (!accessToken) return;
+    setGapLoading(true);
+    try {
+      const data = await skillsApi.getGapAnalysis(accessToken);
+      setGapData(data);
+    } catch {
+      // Fail silently — dashboard is a summary, not a hard dependency
+    } finally {
+      setGapLoading(false);
+    }
+  }, [accessToken]);
+
+  useEffect(() => {
+    void loadGaps();
+  }, [loadGaps]);
+
+  // Compute readiness and top 3 gaps from real data
+  const topGaps = gapData?.gaps
+    ?.filter((g) => g.priority === "critical" || g.priority === "recommended")
+    .slice(0, 3)
+    .map((g) => ({
+      label: g.skill,
+      value: g.priority === "critical" ? 25 : g.priority === "recommended" ? 45 : 60,
+      required: 85,
+    })) ?? [];
+
+  const readinessPercent = gapData
+    ? Math.round(
+        ((gapData.current_skills?.length ?? 0) /
+          Math.max((gapData.current_skills?.length ?? 0) + (gapData.gaps?.length ?? 1), 1)) * 100,
+      )
+    : 0;
+
+  // Fallback static bars when no data yet
+  const skillBars =
+    topGaps.length > 0
+      ? topGaps
+      : [
+          { label: "MLOps & Model Deployment", value: 45, required: 80 },
+          { label: "System Design", value: 60, required: 85 },
+          { label: "LLM Fine-tuning", value: 30, required: 70 },
+        ];
+
+  // Only use real gap data if there's actually some data
+  const hasRealData = gapData && ((gapData.current_skills?.length ?? 0) > 0 || (gapData.gaps?.length ?? 0) > 0);
+
+  const displayReadiness = hasRealData ? readinessPercent : 78;
+  const criticalCount = hasRealData ? (gapData?.gaps?.filter((g) => g.priority === "critical").length ?? 0) : 3;
+  const highImpactGap = hasRealData ? (gapData?.gaps?.[0]?.skill ?? "Kubernetes") : "Kubernetes";
 
   return (
     <div className="p-6 max-w-[1200px] mx-auto space-y-6">
       {/* Greeting */}
       <div className="fade-up">
-        <p className="text-[#667085] text-sm mb-0.5">Saturday, 5 Sep 2026</p>
-        <h1 className="font-display text-2xl font-bold text-[#101828]">Good morning, Rohan 👋</h1>
+        <p className="text-[#667085] text-sm mb-0.5">{formatDate()}</p>
+        <h1 className="font-display text-2xl font-bold text-[#101828]">
+          {getGreeting()}, {firstName} 👋
+        </h1>
       </div>
 
       {/* Hero row */}
@@ -85,23 +153,34 @@ export default function DashboardPage() {
           <div className="absolute top-0 right-0 w-[240px] h-[240px] rounded-full bg-gradient-to-br from-[#4F7CFF]/6 to-[#8B7CFF]/6 -translate-y-1/3 translate-x-1/4 pointer-events-none" />
           <div className="flex items-start gap-6 relative">
             <div className="relative shrink-0">
-              <CircularProgress value={78} size={104} />
+              <CircularProgress value={displayReadiness} size={104} />
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="font-display text-2xl font-bold text-[#101828]">78%</span>
-                <span className="text-[10px] text-[#667085]">Ready</span>
+                {gapLoading ? (
+                  <Loader2 size={20} className="animate-spin text-[#4F7CFF]" />
+                ) : (
+                  <>
+                    <span className="font-display text-2xl font-bold text-[#101828]">{displayReadiness}%</span>
+                    <span className="text-[10px] text-[#667085]">Ready</span>
+                  </>
+                )}
               </div>
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#4F7CFF]/8 text-[#4F7CFF]">AI Engineer</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#4F7CFF]/8 text-[#4F7CFF]">
+                  {targetRole ?? "Set a target role"}
+                </span>
                 <span className="text-xs text-[#98A2B3]">Target Role</span>
               </div>
               <h2 className="font-display text-lg font-bold text-[#101828] mb-1">Career Readiness</h2>
               <p className="text-sm text-[#667085] leading-relaxed mb-4">
-                You're <strong className="text-[#101828]">3 priority skills</strong> away from AI Engineer readiness. Strong foundation in Python and ML, gaps in deployment and system design.
+                {hasRealData
+                  ? <>You're <strong className="text-[#101828]">{criticalCount} priority skill{criticalCount !== 1 ? "s" : ""}</strong> away from {targetRole ?? "your target role"} readiness.</>
+                  : <>You're <strong className="text-[#101828]">3 priority skills</strong> away from readiness. Upload a resume and set a target role to see your real gaps.</>
+                }
               </p>
               <div className="space-y-2.5">
-                {skills.map((s) => <SkillBar key={s.label} {...s} />)}
+                {skillBars.map((s) => <SkillBar key={s.label} {...s} />)}
               </div>
               <button
                 onClick={() => navigate("/skills")}
@@ -122,13 +201,17 @@ export default function DashboardPage() {
             <span className="text-xs font-semibold text-[#4F7CFF] dark:text-[#55C7F3]">ARIA Insight</span>
           </div>
           <p className="text-[#344054] dark:text-white/90 text-sm leading-relaxed flex-1">
-            {"Kubernetes is your highest-impact skill gap right now. Companies hiring AI Engineers require deployment proficiency in "}<strong className="text-[#4F7CFF] dark:text-[#55C7F3]">87% of job listings</strong>{" this quarter."}
+            {highImpactGap} is your highest-impact skill gap right now. Companies hiring{" "}
+            <strong className="text-[#4F7CFF] dark:text-[#55C7F3]">{targetRole ?? "for your target role"}</strong>{" "}
+            require this in most listings this quarter.
           </p>
           <div className="mt-4 pt-4 border-t border-[#D5DEFF] dark:border-white/10">
             <p className="text-[#667085] dark:text-white/40 text-xs mb-3">Recommended next step</p>
             <div className="flex items-center gap-2 p-2.5 rounded-lg bg-white/60 dark:bg-white/5 border border-[#D5DEFF] dark:border-white/10">
               <BookOpen size={13} className="text-[#8B7CFF] shrink-0" />
-              <span className="text-[#344054] dark:text-white/80 text-xs">Docker &amp; K8s Fundamentals — 6h course</span>
+              <span className="text-[#344054] dark:text-white/80 text-xs">
+                {highImpactGap} fundamentals — start your roadmap
+              </span>
             </div>
           </div>
           <button
@@ -160,14 +243,16 @@ export default function DashboardPage() {
             <div className="w-8 h-8 rounded-lg bg-[#F59E0B]/10 flex items-center justify-center">
               <Star size={14} className="text-[#F59E0B]" />
             </div>
-            <span className="text-xs text-[#98A2B3]">Due in 3 days</span>
+            <span className="text-xs text-[#98A2B3]">Roadmap</span>
           </div>
-          <p className="font-semibold text-sm text-[#101828] font-display mb-1">Complete ML Project</p>
-          <p className="text-xs text-[#667085]">Deploy a sentiment analysis model to Hugging Face</p>
-          <div className="mt-3 h-1 bg-[#F1F5F9] rounded-full">
-            <div className="h-1 w-[65%] rounded-full bg-[#F59E0B]" />
-          </div>
-          <p className="text-[10px] text-[#98A2B3] mt-1">65% complete</p>
+          <p className="font-semibold text-sm text-[#101828] font-display mb-1">Next Milestone</p>
+          <p className="text-xs text-[#667085]">Check your roadmap for the next learning task</p>
+          <button
+            onClick={() => navigate("/roadmap")}
+            className="mt-3 text-xs font-semibold text-[#F59E0B] flex items-center gap-1 hover:gap-2 transition-all"
+          >
+            View Roadmap <ChevronRight size={12} />
+          </button>
         </div>
 
         {/* Next interview */}
@@ -176,12 +261,12 @@ export default function DashboardPage() {
             <div className="w-8 h-8 rounded-lg bg-[#4F7CFF]/10 flex items-center justify-center">
               <Mic2 size={14} className="text-[#4F7CFF]" />
             </div>
-            <span className="text-xs text-[#98A2B3]">Tomorrow</span>
+            <span className="text-xs text-[#98A2B3]">Interview</span>
           </div>
           <p className="font-semibold text-sm text-[#101828] font-display mb-1">ECHO Interview</p>
-          <p className="text-xs text-[#667085]">ML Engineer mock · 45 min · Medium difficulty</p>
+          <p className="text-xs text-[#667085]">Practice a mock interview for {targetRole ?? "your target role"}</p>
           <button
-            onClick={() => navigate("/interview")}
+            onClick={() => navigate("/echo")}
             className="mt-3 text-xs font-semibold text-[#4F7CFF] flex items-center gap-1 hover:gap-2 transition-all"
           >
             Prepare now <ChevronRight size={12} />
@@ -194,10 +279,10 @@ export default function DashboardPage() {
             <div className="w-8 h-8 rounded-lg bg-[#22A06B]/10 flex items-center justify-center">
               <Briefcase size={14} className="text-[#22A06B]" />
             </div>
-            <span className="text-xs font-semibold text-[#22A06B] bg-[#22A06B]/8 px-1.5 py-0.5 rounded-full">12 new</span>
+            <span className="text-xs font-semibold text-[#22A06B] bg-[#22A06B]/8 px-1.5 py-0.5 rounded-full">Jobs</span>
           </div>
-          <p className="font-semibold text-sm text-[#101828] font-display mb-1">Strong Job Matches</p>
-          <p className="text-xs text-[#667085]">Infosys, Flipkart, Zomato AI — 82–94% match</p>
+          <p className="font-semibold text-sm text-[#101828] font-display mb-1">Job Matches</p>
+          <p className="text-xs text-[#667085]">Find openings matched to your profile and skills</p>
           <button
             onClick={() => navigate("/jobs")}
             className="mt-3 text-xs font-semibold text-[#22A06B] flex items-center gap-1 hover:gap-2 transition-all"
@@ -206,25 +291,29 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        {/* Recent activity */}
+        {/* Quick links */}
         <div className="bg-white rounded-2xl border border-[#E4E7EC] p-4 card-hover">
           <div className="flex items-center justify-between mb-3">
             <div className="w-8 h-8 rounded-lg bg-[#8B7CFF]/10 flex items-center justify-center">
               <Clock size={14} className="text-[#8B7CFF]" />
             </div>
-            <span className="text-xs text-[#98A2B3]">Today</span>
+            <span className="text-xs text-[#98A2B3]">Quick</span>
           </div>
-          <p className="font-semibold text-sm text-[#101828] font-display mb-2">Recent Activity</p>
+          <p className="font-semibold text-sm text-[#101828] font-display mb-2">Quick Access</p>
           <div className="space-y-1.5">
             {[
-              "Completed PyTorch module",
-              "Resume scored: 81/100",
-              "Skill gap updated",
-            ].map((item, i) => (
-              <div key={i} className="flex items-center gap-2">
+              { label: "Upload Resume", path: "/resume" },
+              { label: "Update Profile", path: "/profile" },
+              { label: "Career Twin", path: "/career-twin" },
+            ].map((item) => (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                className="flex items-center gap-2 w-full text-left"
+              >
                 <div className="w-1 h-1 rounded-full bg-[#8B7CFF]" />
-                <span className="text-xs text-[#667085]">{item}</span>
-              </div>
+                <span className="text-xs text-[#667085] hover:text-[#4F7CFF] transition-colors">{item.label}</span>
+              </button>
             ))}
           </div>
         </div>

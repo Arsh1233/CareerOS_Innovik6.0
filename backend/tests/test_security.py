@@ -149,6 +149,7 @@ def test_capability_report_never_leaks_secret_values() -> None:
         "groq",
         "qdrant",
         "elevenlabs",
+        "elevenlabs_agent",
         "n8n",
     }
     assert all(isinstance(value, bool) for value in capabilities.values())

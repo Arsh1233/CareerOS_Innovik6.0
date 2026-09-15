@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     qdrant_resume_collection: str = "resume_embeddings"
 
     elevenlabs_api_key: str = ""
+    elevenlabs_agent_id: str = ""
 
     n8n_base_url: str = ""
     n8n_webhook_secret: str = ""
@@ -100,6 +101,7 @@ class Settings(BaseSettings):
             "groq": bool(self.groq_api_key),
             "qdrant": bool(self.qdrant_url and self.qdrant_api_key),
             "elevenlabs": bool(self.elevenlabs_api_key),
+            "elevenlabs_agent": bool(self.elevenlabs_api_key and self.elevenlabs_agent_id),
             "n8n": bool(self.n8n_base_url),
         }
 

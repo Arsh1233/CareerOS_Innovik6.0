@@ -1,6 +1,4 @@
 import { apiClient } from "./client";
-import { requireActiveSession } from "./auth";
-
 export interface RoadmapTask {
   title: string;
   type: string;
@@ -47,19 +45,17 @@ export interface RoadmapResponse {
 }
 
 export const roadmapApi = {
-  getLatestRoadmap: async (): Promise<RoadmapResponse | null> => {
-    const session = await requireActiveSession();
+  getLatestRoadmap: async (accessToken: string): Promise<RoadmapResponse | null> => {
     return apiClient.request<RoadmapResponse | null>("/roadmap/latest", {
       method: "GET",
-      accessToken: session.access_token,
+      accessToken,
     });
   },
 
-  generateRoadmap: async (paceHoursPerWeek: number): Promise<RoadmapResponse> => {
-    const session = await requireActiveSession();
+  generateRoadmap: async (accessToken: string, paceHoursPerWeek: number): Promise<RoadmapResponse> => {
     return apiClient.request<RoadmapResponse>("/roadmap/get-roadmap", {
       method: "POST",
-      accessToken: session.access_token,
+      accessToken,
       body: {
         pace_hours_per_week: paceHoursPerWeek,
       },
@@ -67,13 +63,13 @@ export const roadmapApi = {
   },
 
   updateMilestoneStatus: async (
+    accessToken: string,
     milestoneId: string,
     status: "pending" | "in_progress" | "completed"
   ): Promise<MilestoneResponse> => {
-    const session = await requireActiveSession();
     return apiClient.request<MilestoneResponse>(`/roadmap/milestones/${milestoneId}`, {
       method: "PATCH",
-      accessToken: session.access_token,
+      accessToken,
       body: { status },
     });
   },

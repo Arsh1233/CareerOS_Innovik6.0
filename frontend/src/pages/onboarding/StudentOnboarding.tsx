@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import {
   Sparkles, ArrowRight, ArrowLeft, Upload, X, Plus, Trash2, Check,
 } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
 import StepIndicator from "../../components/ui/StepIndicator";
 import { FormField, TextInput, SelectField } from "../../components/ui/FormField";
 
@@ -68,6 +69,7 @@ function Chip({ label, selected, onClick }: { label: string; selected: boolean; 
 
 export default function StudentOnboarding() {
   const navigate = useNavigate();
+  const { updateProfile } = useAuth();
   const [phase, setPhase] = useState<Phase>("steps");
   const [step, setStep] = useState(0);
   const [genIdx, setGenIdx] = useState(0);
@@ -167,8 +169,36 @@ export default function StudentOnboarding() {
     return true;
   }
 
-  function handleContinue() {
+  async function handleContinue() {
     if (step < STEPS.length - 1) { setStep(s => s + 1); return; }
+    
+    try {
+      const flatExp = Object.entries(experience).flatMap(([cat, items]) => 
+        items.map(i => ({ title: i.title, organization: cat, description: i.description }))
+      );
+      
+      const edu = [];
+      if (about.college || about.degree) {
+        edu.push({
+          institution: about.college,
+          degree: about.degree + (about.branch ? ` in ${about.branch}` : ""),
+          end_year: about.gradYear ? parseInt(about.gradYear, 10) : null
+        });
+      }
+
+      await updateProfile({
+        display_name: about.name || undefined,
+        location: about.city || undefined,
+        education: edu.length > 0 ? edu : undefined,
+        experience: flatExp.length > 0 ? flatExp : undefined,
+        target_role_name: direction.targetRole || undefined,
+        interests: Object.keys(skills),
+        onboarding_state: "complete"
+      });
+    } catch (e) {
+      console.error("Failed to sync onboarding data", e);
+    }
+    
     setPhase("generating");
   }
 

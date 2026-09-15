@@ -115,7 +115,8 @@ function LoadingSkeleton() {
 
 // ── Empty State (No Twin) ────────────────────────────────────────────────
 
-function EmptyState({ onGenerate, isGenerating }: { onGenerate: () => void; isGenerating: boolean }) {
+function EmptyState({ onGenerate, isGenerating, userName, hasTargetRole }: { onGenerate: () => void; isGenerating: boolean; userName: string; hasTargetRole: boolean; }) {
+  const navigate = useNavigate();
   return (
     <div className="p-6 max-w-[1200px] mx-auto space-y-6">
       <div className="fade-up">
@@ -132,30 +133,48 @@ function EmptyState({ onGenerate, isGenerating }: { onGenerate: () => void; isGe
           </div>
         </div>
 
-        <h2 className="font-display text-xl font-bold text-[#101828] mb-2">Generate Your Career Twin</h2>
+        <h2 className="font-display text-xl font-bold text-[#101828] mb-2">Generate Your Career Twin, {userName}</h2>
         <p className="text-[#667085] text-sm text-center max-w-md mb-6">
           Your Career Twin analyses your profile evidence to identify strengths,
           gaps, and a realistic career trajectory. No fabricated predictions —
           just honest, evidence-based guidance.
         </p>
 
-        <button
-          onClick={onGenerate}
-          disabled={isGenerating}
-          className="btn-primary text-white text-sm font-semibold py-3 px-8 rounded-xl flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 size={16} className="animate-spin" />
-              Generating...
-            </>
-          ) : (
-            <>
-              <Sparkles size={16} />
-              Generate My Career Twin
-            </>
-          )}
-        </button>
+        {!hasTargetRole ? (
+          <div className="bg-[#FFF4E5] border border-[#F59E0B]/30 rounded-xl p-4 flex items-start gap-3 max-w-md w-full mb-6 text-left">
+            <AlertCircle size={20} className="text-[#F59E0B] shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-[#B45309] mb-1">Missing Target Role</p>
+              <p className="text-sm text-[#D97706] mb-3">
+                We need to know what role you're aiming for to generate your Career Twin.
+              </p>
+              <button 
+                onClick={() => navigate("/profile")}
+                className="text-sm font-semibold text-[#B45309] flex items-center gap-1 hover:underline"
+              >
+                Set Target Role in Profile <ArrowRight size={14} />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={onGenerate}
+            disabled={isGenerating}
+            className="btn-primary text-white text-sm font-semibold py-3 px-8 rounded-xl flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles size={16} />
+                Generate My Career Twin
+              </>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -165,7 +184,7 @@ function EmptyState({ onGenerate, isGenerating }: { onGenerate: () => void; isGe
 
 export default function CareerTwinPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, profile, accessToken } = useAuth();
   const [pageState, setPageState] = useState<PageState>("loading");
   const [twinData, setTwinData] = useState<CareerTwinResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>("");
@@ -179,7 +198,7 @@ export default function CareerTwinPage() {
 
     async function loadLatest() {
       try {
-        const result = await getLatestCareerTwin(user!.access_token);
+        const result = await getLatestCareerTwin(accessToken!);
         if (cancelled) return;
 
         if (result) {
@@ -201,14 +220,14 @@ export default function CareerTwinPage() {
 
   // Generate new twin.
   const handleGenerate = useCallback(async () => {
-    if (!user || isGenerating) return;
+    if (!user || !accessToken || isGenerating) return;
 
     setIsGenerating(true);
     setPageState("generating");
     setErrorMessage("");
 
     try {
-      const result = await generateCareerTwin(user.access_token);
+      const result = await generateCareerTwin(accessToken);
       setTwinData(result);
       setPageState(result.is_stale ? "stale" : "success");
     } catch (err: unknown) {
@@ -218,7 +237,7 @@ export default function CareerTwinPage() {
     } finally {
       setIsGenerating(false);
     }
-  }, [user, isGenerating]);
+  }, [user, accessToken, isGenerating]);
 
   // Handle next action clicks.
   const handleNextAction = useCallback((action: NextAction) => {
@@ -240,7 +259,7 @@ export default function CareerTwinPage() {
   }
 
   if (pageState === "no_twin" || pageState === "generating") {
-    return <EmptyState onGenerate={handleGenerate} isGenerating={isGenerating} />;
+    return <EmptyState onGenerate={handleGenerate} isGenerating={isGenerating} userName={user.name} hasTargetRole={!!profile?.target_role_name} />;
   }
 
   const result: CareerTwinResult | null = twinData?.result ?? null;
@@ -278,20 +297,28 @@ export default function CareerTwinPage() {
       {pageState === "stale" && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
           <AlertTriangle size={18} className="text-amber-500 mt-0.5 shrink-0" />
-          <div>
+          <div className="flex-1">
             <p className="text-sm font-semibold text-amber-800">Career Twin May Be Outdated</p>
             <p className="text-xs text-amber-600 mt-1">
               Your profile has changed since this Twin was generated. Consider regenerating for updated insights.
             </p>
           </div>
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating}
-            className="ml-auto text-xs font-semibold text-amber-700 hover:text-amber-900 flex items-center gap-1 disabled:opacity-50"
-          >
-            {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-            Refresh
-          </button>
+          <div className="flex flex-col items-end gap-2 ml-auto">
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating}
+              className="text-xs font-semibold text-amber-700 hover:text-amber-900 flex items-center gap-1 disabled:opacity-50"
+            >
+              {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+              Refresh
+            </button>
+            <button
+              onClick={() => navigate("/profile")}
+              className="text-xs font-semibold text-amber-700 hover:text-amber-900 hover:underline"
+            >
+              Update Profile
+            </button>
+          </div>
         </div>
       )}
 

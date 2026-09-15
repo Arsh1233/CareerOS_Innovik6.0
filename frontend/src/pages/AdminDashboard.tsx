@@ -1,46 +1,21 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router";
 import {
   Users, Building2, Briefcase, Activity, TrendingUp, AlertTriangle, CheckCircle,
   Clock, Sparkles, ShieldCheck, FileText, BarChart2, LogOut, Search, Filter,
   ChevronRight, Download, Eye, Lock, Unlock, Trash2, Settings, Database,
-  Server, Cpu, Globe, ArrowUpRight, X,
+  Server, Cpu, Globe, ArrowUpRight, X, Loader2
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, AreaChart, Area,
 } from "recharts";
 import { useAuth } from "../context/AuthContext";
+import { getAdminDashboard } from "../lib/api/analytics";
+import type { AdminDashboard } from "../lib/api/types";
+import { useToast } from "../context/ToastContext";
 
-// ── Data ──────────────────────────────────────────────────────────────────
-
-const USERS_DATA = [
-  { name: "Rohan Kumar",    email: "rohan@srm.edu",        role: "student",   status: "active",   college: "SRM Chennai",   joined: "Aug 12" },
-  { name: "Ananya Singh",   email: "ananya@bits.edu",       role: "student",   status: "active",   college: "BITS Pilani",   joined: "Aug 10" },
-  { name: "Dr. Priya Nair", email: "priya@srmadmin.edu",    role: "college",   status: "active",   college: "SRM Chennai",   joined: "Jul 25" },
-  { name: "Vikram HR",      email: "vikram@infosys.com",    role: "recruiter", status: "active",   college: "—",             joined: "Aug 1" },
-  { name: "Kiran Mehta",    email: "kiran@iit.edu",         role: "student",   status: "suspended",college: "IIT Bombay",    joined: "Sep 1" },
-  { name: "Pooja Sharma",   email: "pooja@wipro.com",       role: "recruiter", status: "active",   college: "—",             joined: "Jul 30" },
-  { name: "Arun Verma",     email: "arun@manipal.edu",      role: "college",   status: "pending",  college: "Manipal Univ",  joined: "Sep 3" },
-];
-
-const COLLEGES_DATA = [
-  { name: "SRM Institute",       city: "Chennai",    students: 1170, active: 920, readiness: 77, status: "active",  joinDate: "Jan 2026" },
-  { name: "IIT Bombay",          city: "Mumbai",     students: 680,  active: 640, readiness: 88, status: "active",  joinDate: "Jan 2026" },
-  { name: "BITS Pilani",         city: "Pilani",     students: 740,  active: 710, readiness: 85, status: "active",  joinDate: "Feb 2026" },
-  { name: "NIT Trichy",          city: "Trichy",     students: 520,  active: 480, readiness: 79, status: "active",  joinDate: "Mar 2026" },
-  { name: "VIT Vellore",         city: "Vellore",    students: 890,  active: 720, readiness: 71, status: "active",  joinDate: "Mar 2026" },
-  { name: "Manipal University",  city: "Manipal",    students: 420,  active: 0,   readiness: 0,  status: "pending", joinDate: "Sep 2026" },
-];
-
-const RECRUITERS_DATA = [
-  { name: "Infosys",    contact: "vikram@infosys.com",   roles: 12, hires: 8,  plan: "Enterprise", status: "active",  since: "Jan 2026" },
-  { name: "TCS",        contact: "hr@tcs.com",            roles: 8,  hires: 6,  plan: "Enterprise", status: "active",  since: "Jan 2026" },
-  { name: "Wipro",      contact: "pooja@wipro.com",       roles: 6,  hires: 4,  plan: "Growth",     status: "active",  since: "Feb 2026" },
-  { name: "Cognizant",  contact: "talent@cognizant.com",  roles: 5,  hires: 3,  plan: "Growth",     status: "active",  since: "Mar 2026" },
-  { name: "Amazon",     contact: "india-ta@amazon.com",   roles: 3,  hires: 2,  plan: "Startup",    status: "active",  since: "Apr 2026" },
-  { name: "Zepto",      contact: "hr@zepto.in",           roles: 2,  hires: 0,  plan: "Startup",    status: "pending", since: "Sep 2026" },
-];
+// ── Shared static charts data (for Hackathon Demo) ────────────────────────
 
 const platformTrend = [
   { month: "Apr", users: 8200,  sessions: 24000, ai: 18000 },
@@ -82,7 +57,7 @@ const SERVICES = [
 
 // ── Shared ────────────────────────────────────────────────────────────────
 
-function KPI({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string; sub: string; color: string }) {
+function KPI({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string | number; sub: string; color: string }) {
   return (
     <div className="bg-white rounded-2xl border border-[#E4E7EC] p-5 shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
       <div className="flex items-center justify-between mb-3">
@@ -123,13 +98,14 @@ const roleChip: Record<string, { bg: string; color: string }> = {
 
 const statusDot: Record<string, string> = {
   active:    "#22A06B",
+  verified:  "#22A06B",
   suspended: "#E5484D",
   pending:   "#F59E0B",
 };
 
 // ── Overview ──────────────────────────────────────────────────────────────
 
-function OverviewSection({ onSignOut }: { onSignOut: () => void }) {
+function OverviewSection({ dashboard, onSignOut }: { dashboard: AdminDashboard, onSignOut: () => void }) {
   return (
     <div className="p-6 space-y-5 max-w-[1200px]">
       <div className="flex items-start justify-between mb-5">
@@ -143,9 +119,9 @@ function OverviewSection({ onSignOut }: { onSignOut: () => void }) {
       </div>
 
       <div className="grid grid-cols-4 gap-4">
-        <KPI icon={Users}       label="Total Users"      value="12,450" sub="↑ 650 this month" color="#4F7CFF" />
-        <KPI icon={Building2}   label="Active Colleges"  value="143"    sub="5 pending review"  color="#22A06B" />
-        <KPI icon={Briefcase}   label="Active Recruiters"value="89"     sub="3 new this week"   color="#8B7CFF" />
+        <KPI icon={Users}       label="Total Users"      value={dashboard.total_users} sub="Live count" color="#4F7CFF" />
+        <KPI icon={Building2}   label="Active Colleges"  value={dashboard.active_colleges}    sub="Platform-wide"  color="#22A06B" />
+        <KPI icon={Briefcase}   label="Active Recruiters"value={dashboard.active_recruiters}     sub="Platform-wide"   color="#8B7CFF" />
         <KPI icon={Activity}    label="System Uptime"    value="99.8%"  sub="Email svc degraded" color="#F59E0B" />
       </div>
 
@@ -221,24 +197,31 @@ function OverviewSection({ onSignOut }: { onSignOut: () => void }) {
 
 // ── Users ─────────────────────────────────────────────────────────────────
 
-function UsersSection() {
+function UsersSection({ dashboard }: { dashboard: AdminDashboard }) {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
-  const shown = USERS_DATA.filter(u =>
+  const shown = dashboard.users.filter(u =>
     (roleFilter === "all" || u.role === roleFilter) &&
     u.name.toLowerCase().includes(search.toLowerCase())
   );
+  
+  const counts = {
+    students: dashboard.users.filter(u => u.role === "student").length,
+    colleges: dashboard.users.filter(u => u.role === "college").length,
+    recruiters: dashboard.users.filter(u => u.role === "recruiter").length,
+    suspended: dashboard.users.filter(u => u.status === "suspended").length,
+  };
 
   return (
     <div className="p-6 space-y-5 max-w-[1100px]">
-      <SectionHeader title="User Management" sub="All platform users · 12,450 total" cta="+ Invite User" />
+      <SectionHeader title="User Management" sub={`All platform users · ${dashboard.total_users} total`} cta="+ Invite User" />
 
       <div className="grid grid-cols-4 gap-3">
         {[
-          { label: "Students", value: "11,218", color: "#4F7CFF" },
-          { label: "College Staff", value: "486", color: "#22A06B" },
-          { label: "Recruiters", value: "741", color: "#8B7CFF" },
-          { label: "Suspended", value: "5", color: "#E5484D" },
+          { label: "Students", value: counts.students, color: "#4F7CFF" },
+          { label: "College Staff", value: counts.colleges, color: "#22A06B" },
+          { label: "Recruiters", value: counts.recruiters, color: "#8B7CFF" },
+          { label: "Suspended", value: counts.suspended, color: "#E5484D" },
         ].map(s => (
           <div key={s.label} className="bg-white rounded-xl border border-[#E4E7EC] p-4">
             <p className="font-display font-bold text-xl" style={{ color: s.color }}>{s.value}</p>
@@ -269,9 +252,9 @@ function UsersSection() {
           <span>User</span><span>Email</span><span>Role</span><span>College</span><span>Status</span><span>Actions</span>
         </div>
         {shown.map(u => {
-          const rc = roleChip[u.role];
+          const rc = roleChip[u.role] || roleChip.student;
           return (
-            <div key={u.name} className="grid grid-cols-[1fr_180px_90px_100px_100px_90px] px-5 py-3.5 border-b border-[#F9FAFB] items-center hover:bg-[#F9FAFB] transition-colors">
+            <div key={u.email} className="grid grid-cols-[1fr_180px_90px_100px_100px_90px] px-5 py-3.5 border-b border-[#F9FAFB] items-center hover:bg-[#F9FAFB] transition-colors">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-7 h-7 rounded-full bg-[#344054] flex items-center justify-center text-white text-[10px] font-bold shrink-0">
                   {u.name[0]}
@@ -283,9 +266,9 @@ function UsersSection() {
               </div>
               <span className="text-[12px] text-[#667085] truncate">{u.email}</span>
               <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full w-fit capitalize" style={{ background: rc.bg, color: rc.color }}>{u.role}</span>
-              <span className="text-[12px] text-[#667085] truncate">{u.college}</span>
+              <span className="text-[12px] text-[#667085] truncate">{u.college || "—"}</span>
               <div className="flex items-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full" style={{ background: statusDot[u.status] }} />
+                <div className="w-1.5 h-1.5 rounded-full" style={{ background: statusDot[u.status] || statusDot.pending }} />
                 <span className="text-[12px] capitalize text-[#475467]">{u.status}</span>
               </div>
               <div className="flex items-center gap-2">
@@ -297,6 +280,9 @@ function UsersSection() {
             </div>
           );
         })}
+        {shown.length === 0 && (
+          <p className="p-4 text-center text-[#667085] text-sm">No users found.</p>
+        )}
       </div>
     </div>
   );
@@ -304,9 +290,9 @@ function UsersSection() {
 
 // ── Colleges ──────────────────────────────────────────────────────────────
 
-function CollegesSection() {
+function CollegesSection({ dashboard }: { dashboard: AdminDashboard }) {
   const [search, setSearch] = useState("");
-  const shown = COLLEGES_DATA.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+  const shown = dashboard.colleges.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="p-6 space-y-5 max-w-[1100px]">
@@ -314,9 +300,9 @@ function CollegesSection() {
 
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: "Active Colleges", value: "143", color: "#22A06B" },
-          { label: "Total Students", value: "48,200", color: "#4F7CFF" },
-          { label: "Pending Review", value: "5", color: "#F59E0B" },
+          { label: "Active Colleges", value: dashboard.active_colleges, color: "#22A06B" },
+          { label: "Total Students", value: dashboard.colleges.reduce((sum, c) => sum + c.students, 0).toLocaleString(), color: "#4F7CFF" },
+          { label: "Pending Review", value: dashboard.colleges.filter(c => c.status === "pending").length, color: "#F59E0B" },
         ].map(s => (
           <div key={s.label} className="bg-white rounded-xl border border-[#E4E7EC] p-5 flex items-center gap-4">
             <div>
@@ -345,7 +331,7 @@ function CollegesSection() {
               </div>
               <div className="min-w-0">
                 <p className="font-medium text-[#101828] text-[13px] truncate">{c.name}</p>
-                <p className="text-[10px] text-[#98A2B3]">{c.city} · Since {c.joinDate}</p>
+                <p className="text-[10px] text-[#98A2B3]">{c.city || "—"} · Since {c.joinDate}</p>
               </div>
             </div>
             <span className="text-[13px] text-[#475467] font-medium">{c.students.toLocaleString()}</span>
@@ -370,6 +356,9 @@ function CollegesSection() {
             </div>
           </div>
         ))}
+        {shown.length === 0 && (
+          <p className="p-4 text-center text-[#667085] text-sm">No colleges found.</p>
+        )}
       </div>
     </div>
   );
@@ -377,7 +366,7 @@ function CollegesSection() {
 
 // ── Recruiters ────────────────────────────────────────────────────────────
 
-function RecruitersSection() {
+function RecruitersSection({ dashboard }: { dashboard: AdminDashboard }) {
   const planColor: Record<string, { bg: string; color: string }> = {
     Enterprise: { bg: "#EEF3FF", color: "#4F7CFF" },
     Growth:     { bg: "#F0EFFE", color: "#8B7CFF" },
@@ -390,9 +379,9 @@ function RecruitersSection() {
 
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: "Active Companies", value: "89", color: "#8B7CFF" },
-          { label: "Open Roles", value: "312", color: "#4F7CFF" },
-          { label: "Total Hires", value: "1,840", color: "#22A06B" },
+          { label: "Active Companies", value: dashboard.active_recruiters, color: "#8B7CFF" },
+          { label: "Open Roles", value: dashboard.recruiters.reduce((sum, r) => sum + r.roles, 0), color: "#4F7CFF" },
+          { label: "Total Hires", value: dashboard.recruiters.reduce((sum, r) => sum + r.hires, 0), color: "#22A06B" },
         ].map(s => (
           <div key={s.label} className="bg-white rounded-xl border border-[#E4E7EC] p-5">
             <p className="font-display font-bold text-2xl leading-none" style={{ color: s.color }}>{s.value}</p>
@@ -405,8 +394,8 @@ function RecruitersSection() {
         <div className="grid grid-cols-[1fr_180px_80px_80px_100px_100px_80px] px-5 py-3 border-b border-[#F1F5F9] text-[10px] font-bold uppercase tracking-widest text-[#98A2B3]">
           <span>Company</span><span>Contact</span><span>Roles</span><span>Hires</span><span>Plan</span><span>Status</span><span>Actions</span>
         </div>
-        {RECRUITERS_DATA.map(r => {
-          const pc = planColor[r.plan];
+        {dashboard.recruiters.map(r => {
+          const pc = planColor[r.plan] || planColor.Enterprise;
           return (
             <div key={r.name} className="grid grid-cols-[1fr_180px_80px_80px_100px_100px_80px] px-5 py-3.5 border-b border-[#F9FAFB] items-center hover:bg-[#F9FAFB] transition-colors">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -418,7 +407,7 @@ function RecruitersSection() {
                   <p className="text-[10px] text-[#98A2B3]">Since {r.since}</p>
                 </div>
               </div>
-              <span className="text-[12px] text-[#667085] truncate">{r.contact}</span>
+              <span className="text-[12px] text-[#667085] truncate">{r.contact || "—"}</span>
               <span className="text-[13px] text-[#475467] font-medium">{r.roles}</span>
               <span className="text-[13px] text-[#22A06B] font-semibold">{r.hires}</span>
               <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full w-fit" style={{ background: pc.bg, color: pc.color }}>{r.plan}</span>
@@ -433,6 +422,9 @@ function RecruitersSection() {
             </div>
           );
         })}
+        {dashboard.recruiters.length === 0 && (
+          <p className="p-4 text-center text-[#667085] text-sm">No recruiters found.</p>
+        )}
       </div>
     </div>
   );
@@ -440,13 +432,13 @@ function RecruitersSection() {
 
 // ── Platform Analytics ────────────────────────────────────────────────────
 
-function PlatformAnalytics() {
+function PlatformAnalytics({ dashboard }: { dashboard: AdminDashboard }) {
   return (
     <div className="p-6 space-y-5 max-w-[1100px]">
       <SectionHeader title="Platform Analytics" sub="Usage, growth, and engagement metrics · Sep 2026" cta="Export" />
 
       <div className="grid grid-cols-4 gap-4">
-        <KPI icon={Users}    label="Total Users"     value="12,450" sub="↑ 650 this month"  color="#4F7CFF" />
+        <KPI icon={Users}    label="Total Users"     value={dashboard.total_users} sub="Live count"  color="#4F7CFF" />
         <KPI icon={Activity} label="Daily Sessions"  value="6,200"  sub="↑ 12% WoW"         color="#22A06B" />
         <KPI icon={Sparkles} label="AI Calls / Day"  value="14,000" sub="↑ 8% WoW"          color="#8B7CFF" />
         <KPI icon={TrendingUp} label="Avg Session"   value="24min"  sub="↑ 3min from Aug"   color="#F59E0B" />
@@ -635,18 +627,48 @@ export default function AdminDashboard() {
   const { pathname } = useLocation();
   const { signOut } = useAuth();
   const navigate = useNavigate();
+  const [dashboard, setDashboard] = useState<AdminDashboard | null>(null);
+  const [loading, setLoading] = useState(true);
+  const { error } = useToast();
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const data = await getAdminDashboard();
+        setDashboard(data);
+      } catch (err: any) {
+        error(err.message || "Failed to load admin dashboard data");
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, [error]);
 
   const handleSignOut = () => {
     signOut();
     navigate("/landing");
   };
 
-  if (pathname.startsWith("/admin/users"))       return <UsersSection />;
-  if (pathname.startsWith("/admin/colleges"))    return <CollegesSection />;
-  if (pathname.startsWith("/admin/recruiters"))  return <RecruitersSection />;
-  if (pathname.startsWith("/admin/analytics"))   return <PlatformAnalytics />;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[500px]">
+        <Loader2 className="w-8 h-8 animate-spin text-[#344054]" />
+      </div>
+    );
+  }
+
+  if (!dashboard) {
+    return <div className="p-8">Failed to load data.</div>;
+  }
+
+  if (pathname.startsWith("/admin/users"))       return <UsersSection dashboard={dashboard} />;
+  if (pathname.startsWith("/admin/colleges"))    return <CollegesSection dashboard={dashboard} />;
+  if (pathname.startsWith("/admin/recruiters"))  return <RecruitersSection dashboard={dashboard} />;
+  if (pathname.startsWith("/admin/analytics"))   return <PlatformAnalytics dashboard={dashboard} />;
   if (pathname.startsWith("/admin/ai-usage"))    return <AIUsageSection />;
   if (pathname.startsWith("/admin/logs"))        return <LogsSection />;
   if (pathname.startsWith("/admin/control"))     return <AccessSection />;
-  return <OverviewSection onSignOut={handleSignOut} />;
+  return <OverviewSection dashboard={dashboard} onSignOut={handleSignOut} />;
 }
+

@@ -139,7 +139,7 @@ class CareerTwinService:
             target_role=target_role,
             input_version=evidence_version,
             model_provider=MODEL_PROVIDER,
-            model_name=twin_result.model or "llama-3.3-70b-versatile",
+            model_name=twin_result.model or "llama3-70b-8192",
             prompt_version=PROMPT_VERSION,
             evidence_snapshot=evidence.model_dump(),
             result=twin_result.model_dump(),

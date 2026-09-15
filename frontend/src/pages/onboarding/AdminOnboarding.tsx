@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Shield, ArrowRight, Check, Sparkles } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
 import { FormField, TextInput, SelectField } from "../../components/ui/FormField";
 
 type Phase = "form" | "generating" | "result";
@@ -28,6 +29,7 @@ function Chip({ label, selected, onClick }: { label: string; selected: boolean; 
 
 export default function AdminOnboarding() {
   const navigate = useNavigate();
+  const { updateProfile } = useAuth();
   const [phase, setPhase] = useState<Phase>("form");
   const [genIdx, setGenIdx] = useState(0);
 
@@ -54,6 +56,19 @@ export default function AdminOnboarding() {
 
   function canSubmit() {
     return !!(form.name && form.adminRole);
+  }
+
+  async function handleSubmit() {
+    try {
+      await updateProfile({
+        display_name: form.name || undefined,
+        phone: form.phone || undefined,
+        onboarding_state: "complete"
+      });
+    } catch (e) {
+      console.error("Failed to sync onboarding data", e);
+    }
+    setPhase("generating");
   }
 
   // ── Generating phase ───────────────────────────────────────────────────────
@@ -194,7 +209,7 @@ export default function AdminOnboarding() {
               </div>
             </div>
 
-            <button type="button" onClick={() => setPhase("generating")} disabled={!canSubmit()}
+            <button type="button" onClick={handleSubmit} disabled={!canSubmit()}
               className="w-full py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ background: "linear-gradient(135deg, #E5484D, #FF8C42)", boxShadow: canSubmit() ? "0 4px 14px rgba(229,72,77,0.3)" : "none" }}>
               <Sparkles size={14} /> Set Up Admin Console

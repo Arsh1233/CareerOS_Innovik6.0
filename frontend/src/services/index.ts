@@ -6,34 +6,19 @@
 // Migrated to the real API and removed from this file:
 //   ✗ authService     → src/lib/api/auth.ts    (FastAPI /auth/*)
 //   ✗ profileService  → src/lib/api/users.ts   (FastAPI /users/*)
-//
 //   ✗ resumeService   → src/lib/api/resumes.ts (FastAPI /resumes/*)
+//   ✗ skillsService   → src/lib/api/skills.ts  (FastAPI /skills/*)
+//   ✗ roadmapService  → src/lib/api/roadmap.ts (FastAPI /roadmap/*)
 //
-// Still mocked here (awaiting their phases): skillsService,
-// roadmapService, jobsService, notificationService, collegeService,
-// recruiterService, adminService, supportService, subscriptionService.
+// Still mocked here (awaiting their phases): jobsService, notificationService,
+// collegeService, recruiterService, adminService, supportService, subscriptionService.
 
 function delay<T>(value: T, ms = 1000): Promise<T> {
   return new Promise((res) => setTimeout(() => res(value), ms));
 }
 
-// ── Skills ────────────────────────────────────────────────────────────────
-
-export const skillsService = {
-  getGaps: () =>
-    delay({ success: true, gaps: [] }, 800),
-  buildRoadmap: () =>
-    delay({ success: true }, 700),
-};
-
-// ── Roadmap ───────────────────────────────────────────────────────────────
-
-export const roadmapService = {
-  markComplete: (milestoneId: string) =>
-    delay({ success: true, milestoneId }, 600),
-  markIncomplete: (milestoneId: string) =>
-    delay({ success: true, milestoneId }, 600),
-};
+// (skillsService removed — use skillsApi from src/lib/api/skills.ts)
+// (roadmapService removed — use roadmapApi from src/lib/api/roadmap.ts)
 
 // ── Jobs ──────────────────────────────────────────────────────────────────
 

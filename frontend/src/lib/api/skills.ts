@@ -1,6 +1,4 @@
 import { apiClient } from "./client";
-import { requireActiveSession } from "./auth";
-
 export interface CurrentSkill {
   skill: string;
   normalized_key: string;
@@ -36,11 +34,10 @@ export interface SkillGapResponse {
 }
 
 export const skillsApi = {
-  getGapAnalysis: async (): Promise<SkillGapResponse> => {
-    const session = await requireActiveSession();
+  getGapAnalysis: async (accessToken: string): Promise<SkillGapResponse> => {
     return apiClient.request<SkillGapResponse>("/skills/gap-analysis", {
       method: "GET",
-      accessToken: session.access_token,
+      accessToken,
     });
   },
 };

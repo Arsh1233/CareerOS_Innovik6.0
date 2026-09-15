@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, Target, Zap, BookOpen, Mic2, Briefcase, TrendingUp } from "lucide-react";
+import { Send, Sparkles, Zap, Mic2, BookOpen, Briefcase, TrendingUp } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { sendChatMessage } from "../lib/api/chat";
 
 type Message = {
   id: number;
@@ -8,15 +10,6 @@ type Message = {
   time: string;
 };
 
-const initialMessages: Message[] = [
-  {
-    id: 1,
-    role: "aria",
-    text: "Hi Rohan! I've reviewed your progress since our last session. You've improved your Python score by 8 points — great consistency. Today, I'd recommend focusing on MLOps. You're 3 critical skills away from AI Engineer readiness, and deployment knowledge is your highest-leverage gap. What would you like to work on?",
-    time: "10:32 AM",
-  },
-];
-
 const quickActions = [
   { icon: Zap, label: "What should I learn next?" },
   { icon: TrendingUp, label: "Review my progress" },
@@ -24,14 +17,6 @@ const quickActions = [
   { icon: BookOpen, label: "Improve my resume" },
   { icon: Briefcase, label: "Find suitable roles" },
 ];
-
-const ariaResponses: Record<string, string> = {
-  "What should I learn next?": "Based on your goal of becoming an AI Engineer, I recommend starting with Docker and Kubernetes this week. It's the single highest-ROI skill gap on your profile — 87% of AI Engineer job listings in India require container deployment. I've found a 6-hour Udemy course that matches your learning pace. Want me to add it to your roadmap?",
-  "Review my progress": "You've been consistent this month! Here's your snapshot: Python is strong at 85%. ML fundamentals at 72% — above average for your graduation year. Your weakest areas remain MLOps (40%) and LLM fine-tuning (35%). Interview confidence has improved from 55 to 68 since last month. You're on track for 85% readiness by December if you maintain this pace.",
-  "Prepare me for an interview": "Let's get you ready. Based on your target role (AI Engineer), I'll focus on three high-frequency interview areas: system design for ML pipelines, Python coding challenges with NumPy/Pandas, and behavioral questions. Should we start with a quick 15-minute mock session right now, or do you want me to generate a study plan first?",
-  "Improve my resume": "I've analyzed your resume. Your ATS score is 81/100 — solid but improvable. The top 3 quick wins: (1) Add quantified impact to your ML project description ('improved model accuracy by 12%'), (2) Include 'MLOps' and 'model deployment' keywords which appear in 76% of AI Engineer JDs, (3) Move your skills section above experience. Want me to rewrite the top section?",
-  "Find suitable roles": "I found 12 strong matches for your current profile. Top picks: Flipkart AI Engineer (92% match), Infosys ML Specialist (88%), Zomato Data Scientist (85%). The Flipkart role is especially well-aligned — 9 of your 11 required skills match. The gap is Kubernetes, which you could close in 6 weeks. Want me to show you the full breakdown?",
-};
 
 function TypingIndicator() {
   return (
@@ -49,33 +34,65 @@ function TypingIndicator() {
 }
 
 export default function MentorPage() {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const { accessToken, profile } = useAuth();
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: 1,
+      role: "aria",
+      text: `Hi${profile?.display_name ? ` ${profile.display_name.split(" ")[0]}` : ""}! I'm ARIA, your AI career mentor. Ask me anything about your career, skills, or goals — I'll use your profile and roadmap to give you personalised advice.`,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    },
+  ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  // Persist the DB session so the whole conversation is one thread
+  const sessionIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
 
-  function sendMessage(text: string) {
-    if (!text.trim()) return;
-    const userMsg: Message = { id: Date.now(), role: "user", text, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
+  async function sendMessage(text: string) {
+    if (!text.trim() || isTyping) return;
+
+    const userMsg: Message = {
+      id: Date.now(),
+      role: "user",
+      text,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
     setMessages((m) => [...m, userMsg]);
     setInput("");
     setIsTyping(true);
 
-    setTimeout(() => {
-      setIsTyping(false);
-      const responseText = ariaResponses[text] ?? "That's a great question. Based on your current profile and goals, I recommend focusing on your top skill gap first. Would you like me to create a specific action plan for that?";
+    try {
+      const response = await sendChatMessage(accessToken ?? "", {
+        message: text,
+        session_id: sessionIdRef.current,
+      });
+
+      // Persist session ID for the rest of the conversation
+      sessionIdRef.current = response.session_id;
+
       const ariaMsg: Message = {
         id: Date.now() + 1,
         role: "aria",
-        text: responseText,
+        text: response.message.message,
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages((m) => [...m, ariaMsg]);
-    }, 1800);
+    } catch (err) {
+      const errMsg: Message = {
+        id: Date.now() + 1,
+        role: "aria",
+        text: "Sorry, I couldn't reach the server. Please check your connection and try again.",
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setMessages((m) => [...m, errMsg]);
+    } finally {
+      setIsTyping(false);
+    }
   }
 
   return (
@@ -135,7 +152,8 @@ export default function MentorPage() {
               <button
                 key={qa.label}
                 onClick={() => sendMessage(qa.label)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#E4E7EC] bg-white text-xs text-[#475467] hover:border-[#4F7CFF]/40 hover:text-[#4F7CFF] hover:bg-[#4F7CFF]/4 transition-all whitespace-nowrap"
+                disabled={isTyping}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#E4E7EC] bg-white text-xs text-[#475467] hover:border-[#4F7CFF]/40 hover:text-[#4F7CFF] hover:bg-[#4F7CFF]/4 transition-all whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <qa.icon size={12} />
                 {qa.label}
@@ -173,9 +191,9 @@ export default function MentorPage() {
 
         <div className="space-y-3">
           {[
-            { label: "Target Role", value: "AI Engineer", color: "#4F7CFF" },
-            { label: "Readiness", value: "78%", color: "#22A06B" },
-            { label: "Roadmap Stage", value: "Skill Building", color: "#8B7CFF" },
+            { label: "Target Role", value: profile?.target_role_name ?? "—", color: "#4F7CFF" },
+            { label: "Location", value: profile?.location ?? "—", color: "#22A06B" },
+            { label: "Onboarding", value: profile?.onboarding_state ?? "—", color: "#8B7CFF" },
           ].map((item) => (
             <div key={item.label} className="p-3 rounded-xl bg-[#F7F9FC] border border-[#E4E7EC]">
               <p className="text-[10px] text-[#98A2B3] mb-0.5">{item.label}</p>
@@ -185,22 +203,12 @@ export default function MentorPage() {
         </div>
 
         <div className="pt-3 border-t border-[#F1F5F9]">
-          <p className="text-xs font-semibold text-[#475467] mb-2.5">Top Priority Goal</p>
-          <div className="p-3 rounded-xl bg-[#F59E0B]/6 border border-[#F59E0B]/20">
-            <p className="text-xs font-medium text-[#101828]">Complete MLOps learning module</p>
-            <p className="text-[10px] text-[#98A2B3] mt-0.5">Due in 3 days · 65% done</p>
-          </div>
-        </div>
-
-        <div className="pt-3 border-t border-[#F1F5F9]">
-          <p className="text-xs font-semibold text-[#475467] mb-2.5">Session Summary</p>
-          <div className="space-y-1.5">
-            {["Resume analyzed", "Skill gaps identified", "Roadmap created"].map((item) => (
-              <div key={item} className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#22A06B]" />
-                <span className="text-xs text-[#667085]">{item}</span>
-              </div>
-            ))}
+          <p className="text-xs font-semibold text-[#475467] mb-2.5">Session</p>
+          <div className="p-3 rounded-xl bg-[#4F7CFF]/6 border border-[#4F7CFF]/20">
+            <p className="text-xs font-medium text-[#101828]">
+              {sessionIdRef.current ? "Active session" : "New session"}
+            </p>
+            <p className="text-[10px] text-[#98A2B3] mt-0.5">Messages are saved to your history</p>
           </div>
         </div>
       </div>

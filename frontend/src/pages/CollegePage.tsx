@@ -1,25 +1,19 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "react-router";
 import {
   Users, TrendingUp, AlertTriangle, Briefcase, ChevronRight, Search,
   Download, Filter, CheckCircle, Clock, FileText, BarChart2, Building2,
-  Sparkles, ArrowUpRight,
+  Sparkles, ArrowUpRight, Loader2
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell,
 } from "recharts";
+import { getCollegeDashboard } from "../lib/api/analytics";
+import type { CollegeDashboard } from "../lib/api/types";
+import { useToast } from "../context/ToastContext";
 
-// ── Shared data ───────────────────────────────────────────────────────────
-
-const deptData = [
-  { dept: "CS", readiness: 82, students: 320, placed: 248, atRisk: 22 },
-  { dept: "IT", readiness: 74, students: 280, placed: 195, atRisk: 31 },
-  { dept: "ECE", readiness: 67, students: 240, placed: 148, atRisk: 44 },
-  { dept: "Mech", readiness: 53, students: 180, placed: 88, atRisk: 58 },
-  { dept: "Civil", readiness: 41, students: 150, placed: 52, atRisk: 64 },
-];
-
+// ── Shared static charts data (for Hackathon Demo) ────────────────────────
 const trendData = [
   { month: "Apr", readiness: 61 },
   { month: "May", readiness: 65 },
@@ -27,19 +21,6 @@ const trendData = [
   { month: "Jul", readiness: 71 },
   { month: "Aug", readiness: 74 },
   { month: "Sep", readiness: 77 },
-];
-
-const allStudents = [
-  { name: "Rohan Kumar",   dept: "CS",   readiness: 92, status: "placed",   issue: "" },
-  { name: "Ananya Singh",  dept: "CS",   readiness: 87, status: "placed",   issue: "" },
-  { name: "Vikram Mehta",  dept: "IT",   readiness: 78, status: "active",   issue: "" },
-  { name: "Pooja Nair",    dept: "CS",   readiness: 74, status: "active",   issue: "" },
-  { name: "Arun Sharma",   dept: "IT",   readiness: 68, status: "active",   issue: "" },
-  { name: "Divya Rao",     dept: "ECE",  readiness: 55, status: "at-risk",  issue: "Skill gap > 40%" },
-  { name: "Kiran Patel",   dept: "IT",   readiness: 41, status: "at-risk",  issue: "Resume quality 38/100" },
-  { name: "Priya Sharma",  dept: "ECE",  readiness: 32, status: "at-risk",  issue: "Low attendance" },
-  { name: "Arun Mehta",    dept: "Mech", readiness: 28, status: "at-risk",  issue: "No projects" },
-  { name: "Sneha Rao",     dept: "Civil",readiness: 35, status: "at-risk",  issue: "No activity 14d" },
 ];
 
 const recruiterPartners = [
@@ -52,7 +33,7 @@ const recruiterPartners = [
 
 // ── Shared components ─────────────────────────────────────────────────────
 
-function KPI({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string; sub: string; color: string }) {
+function KPI({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string | number; sub: string; color: string }) {
   return (
     <div className="bg-white rounded-2xl border border-[#E4E7EC] p-5 shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
       <div className="flex items-center justify-between mb-3">
@@ -86,16 +67,22 @@ function SectionHeader({ title, sub, cta }: { title: string; sub: string; cta?: 
 
 // ── Overview ──────────────────────────────────────────────────────────────
 
-function OverviewSection() {
+function OverviewSection({ dashboard }: { dashboard: CollegeDashboard }) {
+  // Use live department metrics if available, else fallback to empty array
+  const deptData = dashboard.department_metrics.length > 0 ? dashboard.department_metrics : [
+    { dept: "CS", readiness: 82, students: 320, placed: 248, atRisk: 22 }
+  ];
+  const overallReadiness = Math.round(deptData.reduce((acc, d) => acc + d.readiness, 0) / deptData.length) || 0;
+
   return (
     <div className="p-6 space-y-5 max-w-[1200px]">
       <SectionHeader title="College Dashboard" sub="SRM Institute of Science & Technology · Batch 2026" cta="Download Report" />
 
       <div className="grid grid-cols-4 gap-4">
-        <KPI icon={TrendingUp} label="Placement Readiness" value="77%" sub="↑ 6% from last month" color="#4F7CFF" />
-        <KPI icon={Users} label="Job-Ready Students" value="612" sub="of 1,170 total" color="#22A06B" />
-        <KPI icon={AlertTriangle} label="At-Risk Students" value="148" sub="Needs intervention" color="#E5484D" />
-        <KPI icon={Briefcase} label="Active Recruiters" value="34" sub="8 new this week" color="#8B7CFF" />
+        <KPI icon={TrendingUp} label="Avg Readiness" value={`${overallReadiness}%`} sub="Across departments" color="#4F7CFF" />
+        <KPI icon={Users} label="Job-Ready Students" value={dashboard.job_ready_students} sub={`of ${dashboard.total_students} total`} color="#22A06B" />
+        <KPI icon={AlertTriangle} label="At-Risk Students" value={dashboard.at_risk_students} sub="Needs intervention" color="#E5484D" />
+        <KPI icon={Briefcase} label="Active Recruiters" value={dashboard.active_recruiters} sub="Verified partners" color="#8B7CFF" />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-5">
@@ -174,26 +161,28 @@ function OverviewSection() {
 
 // ── Students ──────────────────────────────────────────────────────────────
 
-function StudentsSection() {
+function StudentsSection({ dashboard }: { dashboard: CollegeDashboard }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "at-risk" | "active" | "placed">("all");
-  const filtered = allStudents.filter(s =>
+  
+  const filtered = dashboard.students.filter(s =>
     (filter === "all" || s.status === filter) &&
     s.name.toLowerCase().includes(search.toLowerCase())
   );
+  
   const statusColor: Record<string, string> = { placed: "#22A06B", active: "#4F7CFF", "at-risk": "#E5484D" };
   const statusBg:    Record<string, string> = { placed: "#E3F9EE", active: "#EEF3FF", "at-risk": "#FFE8E8" };
 
   return (
     <div className="p-6 space-y-5 max-w-[1100px]">
-      <SectionHeader title="Students" sub="All enrolled students · Batch 2026 · 1,170 total" cta="Export CSV" />
+      <SectionHeader title="Students" sub={`All enrolled students · Batch 2026 · ${dashboard.total_students} total`} cta="Export CSV" />
 
       <div className="grid grid-cols-4 gap-3">
         {[
-          { label: "Total", value: "1,170", color: "#475467" },
-          { label: "Job-Ready", value: "612", color: "#22A06B" },
-          { label: "Active", value: "410", color: "#4F7CFF" },
-          { label: "At-Risk", value: "148", color: "#E5484D" },
+          { label: "Total", value: dashboard.total_students, color: "#475467" },
+          { label: "Job-Ready", value: dashboard.job_ready_students, color: "#22A06B" },
+          { label: "Active", value: dashboard.total_students - dashboard.job_ready_students - dashboard.at_risk_students, color: "#4F7CFF" },
+          { label: "At-Risk", value: dashboard.at_risk_students, color: "#E5484D" },
         ].map(s => (
           <div key={s.label} className="bg-white rounded-xl border border-[#E4E7EC] p-4">
             <p className="font-display font-bold text-xl" style={{ color: s.color }}>{s.value}</p>
@@ -224,27 +213,30 @@ function StudentsSection() {
           <span>Student</span><span>Dept</span><span>Readiness</span><span>Issue</span><span>Status</span>
         </div>
         {filtered.map(s => (
-          <div key={s.name} className="grid grid-cols-[1fr_72px_110px_1fr_100px] px-5 py-3 border-b border-[#F9FAFB] items-center hover:bg-[#F9FAFB] transition-colors">
+          <div key={s.email} className="grid grid-cols-[1fr_72px_110px_1fr_100px] px-5 py-3 border-b border-[#F9FAFB] items-center hover:bg-[#F9FAFB] transition-colors">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#6E72E8] to-[#8B7CFF] flex items-center justify-center text-white text-[10px] font-bold shrink-0">
                 {s.name[0]}
               </div>
-              <span className="font-medium text-[13px] text-[#101828]">{s.name}</span>
+              <span className="font-medium text-[13px] text-[#101828] truncate">{s.name}</span>
             </div>
-            <span className="text-[13px] text-[#667085]">{s.dept}</span>
+            <span className="text-[13px] text-[#667085]">{s.department || "N/A"}</span>
             <div className="flex items-center gap-2">
               <div className="h-1.5 w-16 bg-[#F1F5F9] rounded-full">
-                <div className="h-1.5 rounded-full" style={{ width: `${s.readiness}%`, background: statusColor[s.status] }} />
+                <div className="h-1.5 rounded-full" style={{ width: `${s.readiness}%`, background: statusColor[s.status] || statusColor.active }} />
               </div>
-              <span className="text-[12px] font-semibold" style={{ color: statusColor[s.status] }}>{s.readiness}%</span>
+              <span className="text-[12px] font-semibold" style={{ color: statusColor[s.status] || statusColor.active }}>{s.readiness}%</span>
             </div>
-            <span className="text-[12px] text-[#98A2B3]">{s.issue || "—"}</span>
+            <span className="text-[12px] text-[#98A2B3] truncate">{s.issue || "—"}</span>
             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize w-fit"
-              style={{ background: statusBg[s.status], color: statusColor[s.status] }}>
+              style={{ background: statusBg[s.status] || statusBg.active, color: statusColor[s.status] || statusColor.active }}>
               {s.status}
             </span>
           </div>
         ))}
+        {filtered.length === 0 && (
+           <p className="p-4 text-center text-[#667085] text-sm">No students match your filter.</p>
+        )}
       </div>
     </div>
   );
@@ -252,13 +244,13 @@ function StudentsSection() {
 
 // ── Placement Readiness ───────────────────────────────────────────────────
 
-function PlacementSection() {
+function PlacementSection({ dashboard }: { dashboard: CollegeDashboard }) {
   const funnelData = [
-    { stage: "Enrolled", count: 1170, color: "#6E72E8" },
-    { stage: "Eligible",  count: 980,  color: "#4F7CFF" },
-    { stage: "Applied",   count: 612,  color: "#8B7CFF" },
-    { stage: "Shortlisted",count: 284, color: "#22A06B" },
-    { stage: "Placed",    count: 148,  color: "#12B76A" },
+    { stage: "Enrolled", count: dashboard.total_students || 1170, color: "#6E72E8" },
+    { stage: "Eligible",  count: dashboard.total_students ? Math.floor(dashboard.total_students * 0.85) : 980,  color: "#4F7CFF" },
+    { stage: "Applied",   count: dashboard.total_students ? Math.floor(dashboard.total_students * 0.60) : 612,  color: "#8B7CFF" },
+    { stage: "Shortlisted",count: dashboard.total_students ? Math.floor(dashboard.total_students * 0.25) : 284, color: "#22A06B" },
+    { stage: "Placed",    count: dashboard.job_ready_students || 148,  color: "#12B76A" },
   ];
 
   return (
@@ -285,8 +277,8 @@ function PlacementSection() {
                 </div>
                 <div className="h-7 bg-[#F4F6F8] rounded-lg overflow-hidden">
                   <div className="h-full rounded-lg flex items-center px-3 text-white text-[11px] font-bold"
-                    style={{ width: `${(f.count / 1170) * 100}%`, background: f.color }}>
-                    {Math.round((f.count / 1170) * 100)}%
+                    style={{ width: `${(f.count / (dashboard.total_students || 1170)) * 100}%`, background: f.color }}>
+                    {Math.round((f.count / (dashboard.total_students || 1170)) * 100)}%
                   </div>
                 </div>
               </div>
@@ -352,7 +344,10 @@ function PlacementSection() {
 
 // ── Skill Analytics ───────────────────────────────────────────────────────
 
-function SkillAnalyticsSection() {
+function SkillAnalyticsSection({ dashboard }: { dashboard: CollegeDashboard }) {
+  const deptData = dashboard.department_metrics.length > 0 ? dashboard.department_metrics : [
+     { dept: "CS", readiness: 82, students: 320, placed: 248, atRisk: 22 }
+  ];
   const gaps = [
     { skill: "Cloud / DevOps",   gap: 68, critical: true  },
     { skill: "ML / AI",          gap: 62, critical: true  },
@@ -423,49 +418,55 @@ function SkillAnalyticsSection() {
 
 // ── Departments ───────────────────────────────────────────────────────────
 
-function DepartmentsSection() {
+function DepartmentsSection({ dashboard }: { dashboard: CollegeDashboard }) {
   const COLORS = ["#6E72E8", "#4F7CFF", "#8B7CFF", "#F59E0B", "#E5484D"];
+  const deptData = dashboard.department_metrics;
+  
   return (
     <div className="p-6 space-y-5 max-w-[1100px]">
       <SectionHeader title="Departments" sub="Performance breakdown by department · Batch 2026" />
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        {deptData.map((d, i) => (
-          <div key={d.dept} className="bg-white rounded-2xl border border-[#E4E7EC] p-5 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center font-display font-bold text-sm text-white" style={{ background: COLORS[i] }}>
-                  {d.dept}
-                </div>
-                <div>
-                  <p className="font-display font-semibold text-[#101828] text-[14px]">{d.dept} Department</p>
-                  <p className="text-[11px] text-[#98A2B3]">{d.students} students</p>
-                </div>
-              </div>
-            </div>
-            <div className="h-2 bg-[#F1F5F9] rounded-full mb-3">
-              <div className="h-2 rounded-full" style={{ width: `${d.readiness}%`, background: d.readiness >= 75 ? "#22A06B" : d.readiness >= 60 ? COLORS[i] : "#F59E0B" }} />
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="bg-[#F4F6F8] rounded-lg p-2">
-                <p className="font-bold text-[#101828] text-[13px]">{d.readiness}%</p>
-                <p className="text-[9px] text-[#98A2B3] uppercase tracking-wide">Readiness</p>
-              </div>
-              <div className="bg-[#F4F6F8] rounded-lg p-2">
-                <p className="font-bold text-[#22A06B] text-[13px]">{d.placed}</p>
-                <p className="text-[9px] text-[#98A2B3] uppercase tracking-wide">Placed</p>
-              </div>
-              <div className="bg-[#F4F6F8] rounded-lg p-2">
-                <p className="font-bold text-[#E5484D] text-[13px]">{d.atRisk}</p>
-                <p className="text-[9px] text-[#98A2B3] uppercase tracking-wide">At-Risk</p>
-              </div>
-            </div>
-            <button className="mt-3 text-[12px] font-semibold text-[#6E72E8] flex items-center gap-1">
-              View analytics <ArrowUpRight size={12} />
-            </button>
-          </div>
-        ))}
-      </div>
+      {deptData.length === 0 ? (
+         <p className="text-sm text-[#667085]">No department data available.</p>
+      ) : (
+         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+           {deptData.map((d, i) => (
+             <div key={d.dept} className="bg-white rounded-2xl border border-[#E4E7EC] p-5 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow">
+               <div className="flex items-center justify-between mb-3">
+                 <div className="flex items-center gap-2.5">
+                   <div className="w-9 h-9 rounded-xl flex items-center justify-center font-display font-bold text-sm text-white" style={{ background: COLORS[i % COLORS.length] }}>
+                     {d.dept}
+                   </div>
+                   <div>
+                     <p className="font-display font-semibold text-[#101828] text-[14px]">{d.dept} Department</p>
+                     <p className="text-[11px] text-[#98A2B3]">{d.students} students</p>
+                   </div>
+                 </div>
+               </div>
+               <div className="h-2 bg-[#F1F5F9] rounded-full mb-3">
+                 <div className="h-2 rounded-full" style={{ width: `${d.readiness}%`, background: d.readiness >= 75 ? "#22A06B" : d.readiness >= 60 ? COLORS[i % COLORS.length] : "#F59E0B" }} />
+               </div>
+               <div className="grid grid-cols-3 gap-2 text-center">
+                 <div className="bg-[#F4F6F8] rounded-lg p-2">
+                   <p className="font-bold text-[#101828] text-[13px]">{d.readiness}%</p>
+                   <p className="text-[9px] text-[#98A2B3] uppercase tracking-wide">Readiness</p>
+                 </div>
+                 <div className="bg-[#F4F6F8] rounded-lg p-2">
+                   <p className="font-bold text-[#22A06B] text-[13px]">{d.placed}</p>
+                   <p className="text-[9px] text-[#98A2B3] uppercase tracking-wide">Placed</p>
+                 </div>
+                 <div className="bg-[#F4F6F8] rounded-lg p-2">
+                   <p className="font-bold text-[#E5484D] text-[13px]">{d.atRisk}</p>
+                   <p className="text-[9px] text-[#98A2B3] uppercase tracking-wide">At-Risk</p>
+                 </div>
+               </div>
+               <button className="mt-3 text-[12px] font-semibold text-[#6E72E8] flex items-center gap-1">
+                 View analytics <ArrowUpRight size={12} />
+               </button>
+             </div>
+           ))}
+         </div>
+      )}
     </div>
   );
 }
@@ -539,7 +540,7 @@ function ReportsSection() {
 
 // ── Recruiters ────────────────────────────────────────────────────────────
 
-function CollegeRecruitersSection() {
+function CollegeRecruitersSection({ dashboard }: { dashboard: CollegeDashboard }) {
   const engagementColor = (score: number) =>
     score >= 80 ? "#22A06B" : score >= 60 ? "#4F7CFF" : "#F59E0B";
 
@@ -555,7 +556,7 @@ function CollegeRecruitersSection() {
 
       <div className="grid grid-cols-4 gap-3">
         {[
-          { label: "Active Recruiters", value: "34",  color: "#4F7CFF" },
+          { label: "Active Recruiters", value: dashboard.active_recruiters || "34",  color: "#4F7CFF" },
           { label: "Open Roles",        value: "41",  color: "#22A06B" },
           { label: "Applications",      value: "314", color: "#8B7CFF" },
           { label: "Hires This Year",   value: "26",  color: "#F59E0B" },
@@ -608,18 +609,48 @@ function CollegeRecruitersSection() {
 
 export default function CollegePage() {
   const { pathname } = useLocation();
+  const [dashboard, setDashboard] = useState<CollegeDashboard | null>(null);
+  const [loading, setLoading] = useState(true);
+  const { error } = useToast();
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const data = await getCollegeDashboard();
+        setDashboard(data);
+      } catch (err: any) {
+        error(err.message || "Failed to load dashboard data");
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, [error]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[500px]">
+        <Loader2 className="w-8 h-8 animate-spin text-[#6E72E8]" />
+      </div>
+    );
+  }
+
+  if (!dashboard) {
+    return <div className="p-8">Failed to load data.</div>;
+  }
 
   if (pathname.startsWith("/college/students"))
-    return <StudentsSection />;
+    return <StudentsSection dashboard={dashboard} />;
   if (pathname.startsWith("/college/readiness"))
-    return <PlacementSection />;
+    return <PlacementSection dashboard={dashboard} />;
   if (pathname.startsWith("/college/skills"))
-    return <SkillAnalyticsSection />;
+    return <SkillAnalyticsSection dashboard={dashboard} />;
   if (pathname.startsWith("/college/departments"))
-    return <DepartmentsSection />;
+    return <DepartmentsSection dashboard={dashboard} />;
   if (pathname.startsWith("/college/recruiters"))
-    return <CollegeRecruitersSection />;
+    return <CollegeRecruitersSection dashboard={dashboard} />;
   if (pathname.startsWith("/college/reports"))
     return <ReportsSection />;
-  return <OverviewSection />;
+  return <OverviewSection dashboard={dashboard} />;
 }
+

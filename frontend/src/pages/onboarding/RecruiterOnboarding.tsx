@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Users, ArrowRight, ArrowLeft, Plus, Trash2, Check, Sparkles } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
 import StepIndicator from "../../components/ui/StepIndicator";
 import { FormField, TextInput, SelectField } from "../../components/ui/FormField";
 
@@ -44,6 +45,7 @@ function Chip({ label, selected, onClick, accent = "#8B7CFF" }: { label: string;
 
 export default function RecruiterOnboarding() {
   const navigate = useNavigate();
+  const { updateProfile } = useAuth();
   const [phase, setPhase] = useState<Phase>("steps");
   const [step, setStep] = useState(0);
   const [genIdx, setGenIdx] = useState(0);
@@ -130,8 +132,13 @@ export default function RecruiterOnboarding() {
     return true;
   }
 
-  function handleContinue() {
+  async function handleContinue() {
     if (step < STEPS.length - 1) { setStep(s => s + 1); return; }
+    try {
+      await updateProfile({ onboarding_state: "complete" });
+    } catch (e) {
+      console.error("Failed to sync onboarding data", e);
+    }
     setPhase("generating");
   }
 

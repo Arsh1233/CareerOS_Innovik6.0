@@ -164,141 +164,205 @@ export interface CurrentUser {
   memberships: Membership[];
 }
 
-// ── Skill gap (Phase 06) ──────────────────────────────────────────────────
-// Source of truth: backend/app/schemas/skills.py
+// ── ARIA Chat ─────────────────────────────────────────────────────────────
 
-export type SkillPriority = "critical" | "recommended" | "optional";
-export type EvidenceQuality = "none" | "limited" | "moderate" | "strong";
-/** `no_target_role` / `insufficient_requirements` are honest empty states. */
-export type GapStatus = "ok" | "no_target_role" | "insufficient_requirements";
+export interface ChatMessage {
+  id: string;
+  session_id: string;
+  role: "user" | "aria" | "system";
+  message: string;
+  created_at: string;
+}
 
-export interface SkillGapItem {
-  skill: string;
-  skill_key: string;
-  priority: SkillPriority;
-  required_level: string | null;
-  current_evidence: string | null;
-  reason: string;
+export interface ChatRequest {
+  message: string;
+  /** Omit to start a new session; pass the existing ID to continue one. */
+  session_id?: string | null;
+}
+
+export interface ChatResponse {
+  session_id: string;
+  message: ChatMessage;
+}
+
+// ── ECHO Interview ────────────────────────────────────────────────────────
+
+export interface StartSessionRequest {
+  interview_type: string;
+  difficulty: string;
+}
+
+export interface StartSessionResponse {
+  session_id: string;
+  signed_url: string;
+  elevenlabs_agent_id: string;
+}
+
+export interface EndSessionRequest {
+  session_id: string;
+  elevenlabs_conversation_id: string;
+  duration_seconds?: number | null;
+}
+
+export interface RubricScore {
+  technical: number;
+  communication: number;
+  confidence: number;
+  overall: number;
+}
+
+export interface InterviewFeedback {
+  strongest_area: string;
+  strongest_explanation: string;
+  improvement_area: string;
+  improvement_explanation: string;
+  summary: string;
   recommended_action: string;
 }
 
-/** `GET /skills/gap-analysis`. */
-export interface SkillGapAnalysis {
-  status: GapStatus;
-  target_role: string | null;
-  current_skills: string[];
-  matched_skills: string[];
-  gaps: SkillGapItem[];
-  evidence_quality: EvidenceQuality;
-  evidence_count: number;
-  requirement_count: number;
-  career_twin_stale: boolean;
-  generated_at: string;
-  message: string | null;
-}
-
-// ── Roadmap (Phase 06) ────────────────────────────────────────────────────
-// Source of truth: backend/app/schemas/roadmap.py
-
-export type RoadmapTaskType =
-  | "course"
-  | "project"
-  | "practice"
-  | "reading"
-  | "certification"
-  | "other";
-export type MilestoneStatus = "pending" | "complete";
-
-export interface RoadmapTask {
-  title: string;
-  type: RoadmapTaskType;
-  estimated_hours: number;
-  description: string;
-}
-
-export interface RoadmapWeek {
-  week: number;
-  theme: string;
-  objectives: string[];
-  skills: string[];
-  tasks: RoadmapTask[];
-}
-
-export interface RoadmapPlan {
-  target_role: string;
-  weeks: RoadmapWeek[];
-}
-
-export interface Milestone {
-  id: string;
-  week_number: number;
-  title: string;
-  status: MilestoneStatus;
-  completed_at: string | null;
-  created_at: string | null;
-}
-
-/** `GET /roadmap/latest` and `POST /roadmap/get-roadmap`. */
-export interface Roadmap {
-  id: string;
-  target_role: string;
-  version: number;
-  pace_hours_per_week: number | null;
+export interface InterviewResult {
+  session_id: string;
   status: string;
-  generated_by: string | null;
-  plan: RoadmapPlan;
-  milestones: Milestone[];
-  career_twin_stale: boolean;
-  created_at: string | null;
-}
-
-// ── Resume (Phase 05) ─────────────────────────────────────────────────────
-// Source of truth: backend/app/schemas/resume.py
-
-export type ResumeSectionStatus = "good" | "warn" | "bad";
-export type ResumeParseStatus = "pending" | "parsed" | "failed";
-export type ResumeAnalysisStatus = "pending" | "complete" | "failed";
-
-export interface ResumeSection {
-  label: string;
-  score: number;
-  status: ResumeSectionStatus;
-}
-
-export interface ResumeImprovements {
-  critical: string[];
-  recommended: string[];
-  optional: string[];
-}
-
-export interface ResumeAnalysis {
-  ats_score: number;
-  quality_score: number;
-  role_fit_score: number | null;
-  sections: ResumeSection[];
-  detected_skills: string[];
-  missing_skills: string[];
-  improvements: ResumeImprovements;
-  word_count: number;
+  interview_type: string;
+  difficulty: string;
   target_role: string | null;
-  analyzed_at: string;
+  scores: RubricScore | null;
+  feedback: InterviewFeedback | null;
+  transcript: Array<Record<string, unknown>> | null;
+  duration_seconds: number | null;
+  created_at: string;
 }
 
-export interface Resume {
+export interface InterviewSessionSummary {
+  session_id: string;
+  interview_type: string;
+  difficulty: string;
+  target_role: string | null;
+  status: string;
+  overall_score: number | null;
+  created_at: string;
+}
+
+// ── Jobs ──────────────────────────────────────────────────────────────────
+
+export interface Job {
   id: string;
-  filename: string;
-  mime_type: string | null;
-  size_bytes: number | null;
-  version: number;
-  parse_status: ResumeParseStatus;
-  analysis_status: ResumeAnalysisStatus;
-  storage_path: string | null;
-  content_hash: string;
-  target_role: string | null;
-  analysis: ResumeAnalysis | null;
-  created_at: string | null;
+  recruiter_id: string;
+  company_name: string;
+  title: string;
+  department: string | null;
+  location: string;
+  salary_range: string | null;
+  employment_type: string;
+  description: string | null;
+  required_skills: string[];
+  status: string;
+  deadline: string | null;
+  created_at: string;
 }
 
-export interface ResumeList {
-  resumes: Resume[];
+export interface JobMatch {
+  job: Job;
+  match_score: number;
+  matching_skills: string[];
+  missing_skills: string[];
+  has_applied: boolean;
+}
+
+export interface JobApplication {
+  id: string;
+  job_id: string;
+  student_id: string;
+  status: string;
+  match_score: number | null;
+  matching_skills: string[] | null;
+  missing_skills: string[] | null;
+  created_at: string;
+  student_name: string | null;
+  student_college: string | null;
+}
+
+export interface RecruiterJobMetric {
+  job: Job;
+  applicants_count: number;
+  shortlisted_count: number;
+  avg_match_score: number | null;
+}
+
+export interface RecruiterPipelineMetric {
+  stage: string;
+  count: number;
+  color: string;
+}
+
+export interface RecruiterDashboard {
+  pipeline: RecruiterPipelineMetric[];
+  job_metrics: RecruiterJobMetric[];
+  recent_applications: JobApplication[];
+}
+
+// ── Analytics ─────────────────────────────────────────────────────────────
+
+export interface StudentMetric {
+  name: string;
+  email: string;
+  department: string | null;
+  readiness: number;
+  status: string;
+  issue: string | null;
+}
+
+export interface DepartmentMetric {
+  dept: string;
+  students: number;
+  readiness: number;
+  placed: number;
+  atRisk: number;
+}
+
+export interface CollegeDashboard {
+  total_students: number;
+  job_ready_students: number;
+  at_risk_students: number;
+  active_recruiters: number;
+  department_metrics: DepartmentMetric[];
+  students: StudentMetric[];
+}
+
+export interface UserMetric {
+  name: string;
+  email: string;
+  role: PlatformRole;
+  status: string;
+  college: string | null;
+  joined: string;
+}
+
+export interface CollegeMetric {
+  name: string;
+  city: string | null;
+  students: number;
+  active: number;
+  readiness: number;
+  status: string;
+  joinDate: string;
+}
+
+export interface RecruiterMetric {
+  name: string;
+  contact: string | null;
+  roles: number;
+  hires: number;
+  plan: string;
+  status: string;
+  since: string;
+}
+
+export interface AdminDashboard {
+  total_users: number;
+  active_colleges: number;
+  active_recruiters: number;
+  users: UserMetric[];
+  colleges: CollegeMetric[];
+  recruiters: RecruiterMetric[];
 }

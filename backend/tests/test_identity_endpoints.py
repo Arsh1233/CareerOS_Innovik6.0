@@ -471,6 +471,7 @@ def test_health_reports_all_configured_capabilities(client: TestClient) -> None:
         "groq",
         "qdrant",
         "elevenlabs",
+        "elevenlabs_agent",
         "n8n",
     }
     assert set(body["capabilities"].keys()) == expected_capabilities

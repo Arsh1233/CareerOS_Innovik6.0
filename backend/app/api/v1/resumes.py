@@ -97,7 +97,7 @@ async def upload_resume(
     """
     file_bytes = await file.read()
     return await service.upload_and_analyse(
-        user.claims,
+        {**user.claims, "_access_token": user.access_token},
         filename=file.filename or "resume.pdf",
         file_bytes=file_bytes,
         content_type=file.content_type or "application/pdf",
@@ -120,7 +120,7 @@ async def get_latest_resume(
     Does NOT re-run analysis. Page reload should call this endpoint.
     Returns null if no resume has been uploaded yet.
     """
-    return await service.get_latest(user.claims)
+    return await service.get_latest({**user.claims, "_access_token": user.access_token})
 
 
 @router.get(
@@ -134,7 +134,7 @@ async def list_resumes(
     service: ResumeService = Depends(get_resume_service),
 ) -> list[ResumeListItem]:
     """List all non-archived resumes for the authenticated student."""
-    return await service.list_resumes(user.claims)
+    return await service.list_resumes({**user.claims, "_access_token": user.access_token})
 
 
 @router.delete(
@@ -153,7 +153,7 @@ async def delete_resume(
     analysis phases. Qdrant vector is deleted. Storage file is preserved
     (for potential reanalysis). Archived resumes are hidden from the UI.
     """
-    await service.archive_resume(user.claims, resume_id)
+    await service.archive_resume({**user.claims, "_access_token": user.access_token}, resume_id)
 
 
 @router.post(
@@ -174,7 +174,7 @@ async def reanalyze_resume(
     Uses the stored extracted text — does NOT re-upload the file.
     """
     return await service.reanalyse(
-        user.claims,
+        {**user.claims, "_access_token": user.access_token},
         resume_id,
         target_role=target_role or None,
     )

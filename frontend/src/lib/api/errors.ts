@@ -121,30 +121,6 @@ const MESSAGES: Record<string, string> = {
     "No profile exists for this account yet. Complete onboarding to create one.",
   validation_error: "Please check the details you entered.",
   internal_error: "Something went wrong on our side. Please try again.",
-
-  // Skill gap / roadmap
-  target_role_required: "Set a target role before generating a roadmap.",
-  insufficient_requirements:
-    "No skill requirements are recorded for this role yet, so nothing can be generated.",
-  no_skill_gaps: "You have evidence for every required skill — there is nothing to plan.",
-  roadmap_not_found: "You do not have a saved roadmap yet.",
-  milestone_not_found: "That milestone does not exist.",
-  ai_not_configured:
-    "Roadmap generation is not configured on the server yet. Please try again later.",
-  ai_provider_unavailable:
-    "The roadmap generator is unavailable right now. Please try again shortly.",
-  ai_timeout: "Roadmap generation timed out. Please try again.",
-  ai_invalid_response:
-    "The roadmap generator returned an unusable plan. Nothing was saved.",
-
-  // Resume
-  resume_not_found: "You have not uploaded a resume yet.",
-  unsupported_file: "Only PDF and DOCX resumes can be analysed.",
-  file_too_large: "Resumes must be 10MB or smaller.",
-  empty_file: "That file is empty.",
-  unreadable_file: "That file could not be read. It may be corrupt.",
-  no_text_extracted:
-    "No readable text was found in that file. Scanned images are not supported.",
 };
 
 /**
