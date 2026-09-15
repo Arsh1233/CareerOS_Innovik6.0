@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
     gemini_embedding_model: str = ""
 
+    # ── Groq (structured generation for the roadmap, Phase 06) ────────────
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_timeout_seconds: float = 45.0
+
     qdrant_url: str = ""
     qdrant_api_key: str = ""
 
@@ -61,7 +67,7 @@ class Settings(BaseSettings):
     langsmith_api_key: str = ""
     langsmith_project: str = "careeros"
 
-    @field_validator("supabase_url", "n8n_base_url", "qdrant_url")
+    @field_validator("supabase_url", "n8n_base_url", "qdrant_url", "groq_base_url")
     @classmethod
     def _strip_trailing_slash(cls, value: str) -> str:
         return value.rstrip("/")
@@ -89,6 +95,7 @@ class Settings(BaseSettings):
             "supabase_admin": bool(self.supabase_url and self.supabase_service_role_key),
             "database": bool(self.database_url),
             "gemini": bool(self.gemini_api_key),
+            "groq": bool(self.groq_api_key),
             "qdrant": bool(self.qdrant_url and self.qdrant_api_key),
             "elevenlabs": bool(self.elevenlabs_api_key),
             "n8n": bool(self.n8n_base_url),

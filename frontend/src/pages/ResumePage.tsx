@@ -52,25 +52,62 @@ function ScoreArc({ value }: { value: number }) {
   );
 }
 
+const ACCEPTED_EXTENSIONS = [".pdf", ".doc", ".docx"];
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/** Returns an error message, or null when the file is acceptable. */
+function validateResumeFile(file: File): string | null {
+  const name = file.name.toLowerCase();
+  if (!ACCEPTED_EXTENSIONS.some((extension) => name.endsWith(extension))) {
+    return "Only PDF, DOC and DOCX files are supported.";
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return "That file is larger than the 10MB limit.";
+  }
+  return null;
+}
+
 export default function ResumePage() {
-  const { success, info } = useToast();
+  const { success, error, info } = useToast();
   const [filename, setFilename] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [improving, setImproving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleFile(file: File | undefined) {
-    if (!file) return;
-    setUploading(true);
-    await resumeService.upload(file);
-    setUploading(false);
-    setFilename(file.name);
-    success(`"${file.name}" analysed successfully.`);
+  // Opens the picker without letting the programmatic click bubble back into
+  // the dropzone handler, and clears the value so the same file can be picked
+  // again (an unchanged file input fires no change event).
+  function openFilePicker() {
+    const input = fileInputRef.current;
+    if (!input) return;
+    input.value = "";
+    input.click();
   }
 
-  async function handleReplace() {
-    fileInputRef.current?.click();
+  async function handleFile(file: File | undefined) {
+    if (!file) return;
+
+    const problem = validateResumeFile(file);
+    if (problem) {
+      error(problem);
+      return;
+    }
+
+    setUploading(true);
+    try {
+      await resumeService.upload(file);
+      setFilename(file.name);
+      success(`"${file.name}" analysed successfully.`);
+    } catch {
+      error("We could not analyse that file. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleReplace() {
+    openFilePicker();
   }
 
   async function handleImprove() {
@@ -94,22 +131,25 @@ export default function ResumePage() {
           <p className="text-[#667085] text-sm">Is your resume helping or hurting you? Upload to find out.</p>
         </div>
 
+        {/* The input is a sibling of the dropzone, not a child: a child file
+            input would re-enter this click handler when clicked. */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.doc,.docx"
+          className="hidden"
+          onChange={(e) => handleFile(e.target.files?.[0])}
+        />
+
         <div
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={(e) => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files[0]); }}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={openFilePicker}
           className={`fade-up-1 border-2 border-dashed rounded-2xl p-14 text-center transition-all cursor-pointer ${
             dragging ? "border-[#4F7CFF] bg-[#4F7CFF]/4" : "border-[#D0D5DD] hover:border-[#4F7CFF]/50 hover:bg-[#4F7CFF]/2"
           } ${uploading ? "pointer-events-none opacity-70" : ""}`}
         >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.doc,.docx"
-            className="hidden"
-            onChange={(e) => handleFile(e.target.files?.[0])}
-          />
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#4F7CFF]/10 to-[#8B7CFF]/10 flex items-center justify-center mx-auto mb-4">
             {uploading ? <div className="w-5 h-5 border-2 border-[#4F7CFF] border-t-transparent rounded-full animate-spin" /> : <Upload size={24} className="text-[#4F7CFF]" />}
           </div>

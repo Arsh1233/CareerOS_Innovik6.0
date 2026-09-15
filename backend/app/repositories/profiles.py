@@ -77,6 +77,11 @@ class ProfilesRepository:
             assignments.append(f"{column} = %s")
             values.append(value)
 
+        # Changing the target role invalidates the Twin's inputs. The Twin is
+        # flagged for refresh, never regenerated here.
+        if "target_role_name" in fields:
+            assignments.append("career_twin_stale = true")
+
         if not assignments:
             return await self.get_by_user_id(claims, user_id)
 

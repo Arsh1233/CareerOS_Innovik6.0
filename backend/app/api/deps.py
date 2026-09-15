@@ -15,9 +15,14 @@ from pydantic import BaseModel, ConfigDict
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.core.security import decode_access_token, role_from_claims
+from app.integrations.groq import GroqClient
 from app.integrations.supabase import SupabaseAuthClient
 from app.repositories.profiles import ProfilesRepository
+from app.repositories.roadmaps import RoadmapsRepository
+from app.repositories.skills import SkillsRepository
 from app.services.auth_service import AuthService
+from app.services.roadmap_service import RoadmapService
+from app.services.skill_gap_service import SkillGapService
 
 bearer_scheme = HTTPBearer(
     auto_error=False,
@@ -96,3 +101,35 @@ def get_auth_service(
     profiles: ProfilesRepository = Depends(get_profiles_repository),
 ) -> AuthService:
     return AuthService(auth_client=auth_client, profiles=profiles)
+
+
+def get_skills_repository() -> SkillsRepository:
+    return SkillsRepository()
+
+
+def get_roadmaps_repository() -> RoadmapsRepository:
+    return RoadmapsRepository()
+
+
+def get_groq_client(settings: Settings = Depends(get_settings)) -> GroqClient:
+    return GroqClient(settings)
+
+
+def get_skill_gap_service(
+    skills: SkillsRepository = Depends(get_skills_repository),
+) -> SkillGapService:
+    return SkillGapService(skills=skills)
+
+
+def get_roadmap_service(
+    skill_gap: SkillGapService = Depends(get_skill_gap_service),
+    roadmaps: RoadmapsRepository = Depends(get_roadmaps_repository),
+    groq: GroqClient = Depends(get_groq_client),
+    settings: Settings = Depends(get_settings),
+) -> RoadmapService:
+    return RoadmapService(
+        skill_gap=skill_gap,
+        roadmaps=roadmaps,
+        groq=groq,
+        settings=settings,
+    )

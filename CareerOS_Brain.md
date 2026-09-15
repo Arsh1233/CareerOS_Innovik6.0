@@ -629,6 +629,39 @@ Until that happens Phase 03 stays **in progress**, not complete.
 | 2026-09-15 | Browser checks: unauthenticated `/dashboard` → `/landing`; `/auth/student`, `/auth/college` render; `/auth/admin` shows no OTP step | ✅ Done |
 | 2026-09-15 | Backend tests re-run after frontend work: **40 passed** (no contract breakage) | ✅ Done |
 | — | **Phase 03 NOT complete**: apply the migration + configure live Supabase, then verify UI → API → Supabase → persistence → readback | ⬜ **Next — blocked on credentials** |
+| 2026-09-15 | **Phase 06 attempt → BLOCKED (pre-flight verification only).** Before writing Skill Gap / Roadmap code, verified the repo against the Phase 06 brief. Findings: `backend/app/api/v1/router.py` mounts **only** health/auth/users (7 endpoints — no skills/roadmap/twin/resume routers); a full-repo search for `career-twin\|resume\|roadmap\|skill gap\|groq\|qdrant` in `backend/` returns **0 hits**; the sole migration holds **6 identity tables** (`colleges`, `recruiter_organizations`, `role_requirements`, `profiles`, `organization_memberships`, `student_college_memberships`) — no `skills`, `skill_evidence`, `resumes`, `roadmaps`, `roadmap_milestones`, or `role_required_skills`; the test suite is **40** `def test_` functions (**not 91**); `frontend/src/lib/api/` contains only `auth/client/errors/index/types/users` (no `skills.ts`/`roadmap.ts`); and `frontend/src/services/index.ts` still mocks `resumeService`, `skillsService`, `roadmapService`. **Phases 04 (Career Twin) and 05 (Resume Intelligence) do not exist in this checkout**, so Phase 06's required input — persisted resume skill evidence — is absent. **No Phase 06 code, migration, or endpoints were written**, because doing so would require fabricating evidence, which §13 forbids. | ⬜ **Blocked — see §20** |
+
+---
+
+## 20. Phase 06 Blocker (recorded 2026-09-15)
+
+A Phase 06 brief (Skill Gap Intelligence + Personalized Roadmap) was supplied
+whose "current state" assumed Phase 03 verified live, Phase 04 Career Twin done,
+Phase 05 Resume Intelligence done, resume→skill evidence persisted, a 91-test
+baseline, and **Groq** as the AI provider. **None of that matches this
+repository.**
+
+The actual state is exactly what §6/§16/§17/§18 describe: a Phase 03 identity
+slice (auth + profile) is the only implemented vertical, the migration is
+unapplied, the test suite has 40 tests, there is no AI provider integration, and
+Skills/Roadmap/Resume/Twin are frontend mocks.
+
+Phase 06 cannot satisfy its own exit gate here — "real persisted skill evidence
+feeds gap analysis" — because no Phase 05 code produces that evidence.
+Options before Phase 06 can proceed:
+
+1. Point the agent at the checkout/branch that actually contains Phases 04–05
+   (the brief referenced `D:\innovik_careerOs\CareerOS-RuBI\`, a tree this
+   workspace does not match).
+2. Authorize building Phase 04 (Career Twin) and Phase 05 (Resume Intelligence)
+   first, then Phase 06.
+3. Authorize a deliberately scoped Phase 06 that reads from `skills` /
+   `skill_evidence` tables it creates itself, accepting that no real evidence
+   exists yet and the "real evidence" exit criterion stays unproven.
+
+Provider note: the brief names **Groq**, but every prior decision (§3, §8)
+specifies **Google Gemini** as the AI provider. This contradiction must be
+resolved by the owner before any generation code is written.
 
 ---
 
