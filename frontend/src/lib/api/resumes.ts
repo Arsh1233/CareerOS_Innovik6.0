@@ -2,7 +2,7 @@
  * Resume Intelligence API client
  */
 
-import { api, handleResponse } from './client';
+import { apiClient } from './client';
 
 export interface PipelineStatus {
   parse_status: string;
@@ -84,7 +84,7 @@ export interface ResumeUploadResponse {
 }
 
 export interface ResumeListItem {
-  resume_id: string;
+  id: string;
   original_filename: string;
   file_size_bytes: number;
   version: number;
@@ -101,6 +101,7 @@ export const resumesApi = {
    * Upload and analyze a resume PDF
    */
   async uploadResume(
+    accessToken: string,
     file: File,
     targetRole?: string
   ): Promise<ResumeUploadResponse> {
@@ -110,44 +111,54 @@ export const resumesApi = {
       formData.append('target_role', targetRole);
     }
 
-    const response = await api.post('/resumes/upload-resume', {
+    return apiClient.request<ResumeUploadResponse>('/resumes/upload-resume', {
+      method: 'POST',
       body: formData,
-      // Let the browser set the Content-Type boundary for FormData
+      accessToken,
+      timeoutMs: 60_000,
     });
-    return handleResponse<ResumeUploadResponse>(response);
   },
 
   /**
    * Get the latest persisted resume analysis without re-running
    */
-  async getLatestResume(): Promise<ResumeUploadResponse | null> {
-    const response = await api.get('/resumes/latest');
-    // If user has no resume, the backend returns null
-    return handleResponse<ResumeUploadResponse | null>(response);
+  async getLatestResume(accessToken: string): Promise<ResumeUploadResponse | null> {
+    try {
+      const result = await apiClient.request<ResumeUploadResponse | null>('/resumes/latest', {
+        method: 'GET',
+        accessToken,
+      });
+      return result ?? null;
+    } catch {
+      return null;
+    }
   },
 
   /**
    * List all non-archived resumes
    */
-  async listResumes(): Promise<ResumeListItem[]> {
-    const response = await api.get('/resumes');
-    return handleResponse<ResumeListItem[]>(response);
+  async listResumes(accessToken: string): Promise<ResumeListItem[]> {
+    return apiClient.request<ResumeListItem[]>('/resumes', {
+      method: 'GET',
+      accessToken,
+    });
   },
 
   /**
    * Soft-delete a resume
    */
-  async deleteResume(id: string): Promise<void> {
-    const response = await api.delete(`/resumes/${id}`);
-    if (!response.ok) {
-      throw new Error(`Failed to delete resume: ${response.statusText}`);
-    }
+  async deleteResume(accessToken: string, id: string): Promise<void> {
+    return apiClient.request<void>(`/resumes/${id}`, {
+      method: 'DELETE',
+      accessToken,
+    });
   },
 
   /**
    * Re-run analysis on an existing resume
    */
   async reanalyzeResume(
+    accessToken: string,
     id: string,
     targetRole?: string
   ): Promise<ResumeUploadResponse> {
@@ -156,9 +167,11 @@ export const resumesApi = {
       formData.append('target_role', targetRole);
     }
 
-    const response = await api.post(`/resumes/${id}/reanalyze`, {
+    return apiClient.request<ResumeUploadResponse>(`/resumes/${id}/reanalyze`, {
+      method: 'POST',
       body: formData,
+      accessToken,
+      timeoutMs: 60_000,
     });
-    return handleResponse<ResumeUploadResponse>(response);
   },
 };

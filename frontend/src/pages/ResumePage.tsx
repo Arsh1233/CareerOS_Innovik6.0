@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Upload, FileText, CheckCircle, AlertCircle, Info, RefreshCw, Star, Sparkles, X } from "lucide-react";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 import { resumesApi, ResumeUploadResponse } from "../lib/api";
 
 function ScoreArc({ value }: { value: number }) {
@@ -33,14 +34,17 @@ export default function ResumePage() {
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const { session } = useAuth();
+
   useEffect(() => {
     loadLatest();
-  }, []);
+  }, [session?.access_token]);
 
   async function loadLatest() {
+    if (!session?.access_token) return;
     setLoading(true);
     try {
-      const latest = await resumesApi.getLatestResume();
+      const latest = await resumesApi.getLatestResume(session.access_token);
       setResumeData(latest);
     } catch (err: any) {
       // Don't show error toast on initial load, just fail silently to empty state
@@ -65,7 +69,8 @@ export default function ResumePage() {
 
     setUploading(true);
     try {
-      const res = await resumesApi.uploadResume(file);
+      if (!session?.access_token) throw new Error("Not authenticated");
+      const res = await resumesApi.uploadResume(session.access_token, file);
       setResumeData(res);
       
       if (res.pipeline.analysis_status === "ok") {
@@ -83,10 +88,10 @@ export default function ResumePage() {
   }
 
   async function handleRemove() {
-    if (!resumeData) return;
+    if (!resumeData || !session?.access_token) return;
     
     try {
-      await resumesApi.deleteResume(resumeData.resume_id);
+      await resumesApi.deleteResume(session.access_token, resumeData.resume_id);
       setResumeData(null);
       success("Resume removed.");
     } catch (err: any) {

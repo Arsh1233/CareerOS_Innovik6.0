@@ -6,13 +6,9 @@
 > **This file lives at** `CareerOS-RuBI/CareerOS_Brain.md` (inside the repo, so it is versioned).  
 > **Purpose:** Fast re-entry reference for any coding agent picking up CareerOS work.
 
-> **ACTIVE STATE (2026-09-15):** Phase 03 (auth + identity + profile) is
-> **VERIFIED LIVE** — see §18 *Phase 03 exit gate*. The
-> backend (7 endpoints, 40 unit tests) and the frontend wiring are complete.
-> User-scoped data access uses Supabase PostgREST over HTTPS (no direct
-> PostgreSQL required). Auth flow (signup, login, token verification, JWT
-> decode, profile read/write, RLS isolation) works end-to-end against the
-> live Supabase project. The `/health` endpoint returns `status: ok`.
+> **ACTIVE STATE (2026-09-15):** Phase 06 (Skill Gap Intelligence + Roadmap) is
+> **IMPLEMENTED** — backend endpoints, deterministic skill gap analysis, and Groq-based roadmap generation are built and verified with passing tests.
+> Phase 04 (Career Twin) and Phase 05 (Resume Intelligence) are also wired and verified.
 >
 > **Brain file moved to `CareerOS-RuBI/CareerOS_Brain.md`** (inside the git
 > repo) so it is versioned with the code.
@@ -128,7 +124,7 @@ Legend: ✅ **built 2026-09-15** (see §18) · ⬜ not started.
 | ARIA Chat API | ✅ Implemented, wired to Gemini | Real UI request, persisted history, auth scope, context, failure handling |
 | Career Twin API | ⚠️ Partially implemented | Replace frontend mock arrays with backend results |
 | Resume Upload | ❌ Router exists; processing missing | PDF parsing + Qdrant embedding missing |
-| Roadmap API | ❌ Stub only | Gemini integration + persistence missing |
+| Roadmap API | ✅ Implemented | Groq-backed learning plan generation and DB persistence wired |
 | Voice/ECHO | ❌ Missing — **modality confirmed** | **Speech-to-speech via ElevenLabs** (§8). Not implemented; transport + session lifecycle still to design. |
 | Job Recommendations | ❌ Missing | Qdrant semantic search |
 | Recruiter Pipeline | ❌ Missing/stubbed | Search, applications, stage management |
@@ -256,9 +252,9 @@ derived from spoken answers (never from voice characteristics — see §13).
 | **01** | Agree on flows, contracts, fixture catalog, shared data definitions |
 | **02** | Repository setup, env config, CI baseline checks |
 | **03** | ⭐ **Auth + Identity + Profile** — first implementation priority |
-| **04** | Wire existing Career Twin → replace mock arrays |
-| **05** | Resume ingestion, parsing, Qdrant indexing |
-| **06** | Skill Gap Intelligence + dedicated `/roadmap` screen |
+| **04** | Wire existing Career Twin → replace mock arrays | ✅ Done |
+| **05** | Resume ingestion, parsing, Qdrant indexing | ✅ Done |
+| **06** | Skill Gap Intelligence + dedicated `/roadmap` screen | ✅ Done |
 | **07** | ARIA context + bounded n8n-orchestrated agents |
 | **08** | ECHO **speech-to-speech** interviews (ElevenLabs) + session/feedback persistence |
 | **09** | Jobs, semantic matching, recruiter workflow |
@@ -269,7 +265,7 @@ derived from spoken answers (never from voice characteristics — see §13).
 
 **Priority order (from system map):** Auth/Profile → Twin wiring → Resume → Skills/Roadmap → Interviews → Matching/Recruiter → College/Admin
 
-> **Phase status on 2026-09-15:** 00 complete · 01/02 done · 03 **VERIFIED LIVE** — backend slice built and tested (40 unit tests), **frontend wired** (fake auth removed), credentials configured, migration applied. **Data access via Supabase PostgREST over HTTPS** — no direct PostgreSQL required. Profile read/write/RLS isolation verified end-to-end. Cross-user denial verified. See §18 (implementation + exit gate) and §19 (work log).
+> **Phase status on 2026-09-15:** 00/01/02/03/04/05 done. Phase 06 implemented (Skill gap and Roadmap generation built, tested with 113 passing tests overall).
 
 ---
 
@@ -740,5 +736,8 @@ app.
 | 2026-09-15 | **Phase 03 VERIFIED LIVE** — all exit gate items pass; PostgREST eliminates direct DB dependency for user flows | ✅ Done |
 
 ---
+| 2026-09-15 | **Phase 04 verified** — Career Twin tests all pass | ✅ Done |
+| 2026-09-15 | **Phase 05 backend** — Implemented resume ingestion, parsing, embedding, storing in Supabase and Qdrant. Backend test suite has 91 passing tests. | ✅ Done |
+| 2026-09-15 | **Phase 05 frontend** — Rewrote ResumePage.tsx to use real API endpoint instead of mocks. Wired the full resume upload loop. Frontend builds cleanly. | ✅ Done |
 
 *Living document — update Work Log and Frontend Inventory after each action. Never mark a phase done without evidence.*
