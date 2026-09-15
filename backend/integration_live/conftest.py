@@ -1,7 +1,8 @@
 """Fixtures for the live Supabase verification suite.
 
-These tests talk to a REAL Supabase project: real GoTrue, real PostgreSQL, real
-RLS policies. Nothing is mocked and no dependency is overridden.
+These tests talk to a REAL Supabase project: real GoTrue, real PostgREST
+over HTTPS, real RLS policies.  Nothing is mocked and no dependency is
+overridden.
 
 They are opt-in and separated from the unit suite on purpose:
 
@@ -11,11 +12,15 @@ They are opt-in and separated from the unit suite on purpose:
 Gating (both must hold, otherwise every test skips with the reason shown):
 
 1. `CAREEROS_LIVE_SUPABASE=1` must be set.
-2. `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` and
-   `DATABASE_URL` must be configured in the backend environment.
+2. `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` must be
+   configured in the backend environment.
 
-The suite never fabricates a pass. If the live project cannot complete a step,
+The suite never fabricates a pass.  If the live project cannot complete a step,
 the test fails or skips and prints what actually happened.
+
+DATA ACCESS ARCHITECTURE:
+    FastAPI -> Supabase PostgREST (HTTPS) -> PostgreSQL RLS
+    Admin checks -> Direct PostgreSQL (optional, for privileged verification)
 """
 
 from __future__ import annotations
@@ -28,6 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -37,15 +43,14 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
 from app.integrations.supabase import SupabaseAuthClient  # noqa: E402
 from app.main import app  # noqa: E402
-from app.repositories.base import claims_session_statements  # noqa: E402
 
 LIVE_FLAG = "CAREEROS_LIVE_SUPABASE"
 
+# Direct DATABASE_URL is optional — PostgREST is the primary access path.
 REQUIRED_VALUES = (
     "supabase_url",
     "supabase_anon_key",
     "supabase_service_role_key",
-    "database_url",
 )
 
 
@@ -62,7 +67,7 @@ def _skip_reason() -> str | None:
     if os.environ.get(LIVE_FLAG) != "1":
         return (
             f"live verification is opt-in: set {LIVE_FLAG}=1 and configure "
-            "SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY and DATABASE_URL"
+            "SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY"
         )
     missing = _missing_configuration()
     if missing:
@@ -98,7 +103,128 @@ def settings() -> Any:
     return get_settings()
 
 
-# ── database helpers ──────────────────────────────────────────────────────
+# ── PostgREST helper ──────────────────────────────────────────────────────
+
+
+class PostgRESTHelper:
+    """Thin helper for PostgREST requests with a user's JWT.
+
+    Used by the live suite to verify RLS through the real Supabase REST API,
+    not through direct SQL.  This is the same path the production API uses.
+    """
+
+    def __init__(self, supabase_url: str, anon_key: str) -> None:
+        self._base_url = f"{supabase_url}/rest/v1"
+        self._anon_key = anon_key
+
+    def _headers(self, access_token: str) -> dict[str, str]:
+        return {
+            "apikey": self._anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+    def select(
+        self,
+        table: str,
+        access_token: str,
+        *,
+        columns: str = "*",
+        filters: dict[str, str] | None = None,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """SELECT via PostgREST."""
+        params: dict[str, str] = {"select": columns}
+        if filters:
+            params.update(filters)
+        params["limit"] = str(limit)
+
+        url = f"{self._base_url}/{table}"
+        response = httpx.get(
+            url,
+            headers=self._headers(access_token),
+            params=params,
+            timeout=10.0,
+        )
+
+        if response.status_code == 200:
+            rows = response.json()
+            if isinstance(rows, list):
+                return rows
+            return []
+
+        raise RuntimeError(
+            f"PostgREST SELECT failed: {response.status_code} {response.text[:400]}"
+        )
+
+    def update(
+        self,
+        table: str,
+        access_token: str,
+        *,
+        filters: dict[str, str],
+        payload: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """PATCH via PostgREST with return=representation."""
+        params = {**filters}
+        url = f"{self._base_url}/{table}"
+        response = httpx.patch(
+            url,
+            headers={
+                **self._headers(access_token),
+                "Prefer": "return=representation",
+            },
+            params=params,
+            json=payload,
+            timeout=10.0,
+        )
+
+        if response.status_code == 200:
+            rows = response.json()
+            if isinstance(rows, list):
+                return rows
+            return []
+
+        raise RuntimeError(
+            f"PostgREST PATCH failed: {response.status_code} {response.text[:400]}"
+        )
+
+    def insert(
+        self,
+        table: str,
+        access_token: str,
+        *,
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """INSERT via PostgREST with return=representation."""
+        url = f"{self._base_url}/{table}"
+        response = httpx.post(
+            url,
+            headers={
+                **self._headers(access_token),
+                "Prefer": "return=representation",
+            },
+            json=payload,
+            timeout=10.0,
+        )
+
+        if response.status_code in (200, 201):
+            rows = response.json()
+            if isinstance(rows, list) and rows:
+                return rows[0]
+            return None
+
+        raise RuntimeError(
+            f"PostgREST INSERT failed: {response.status_code} {response.text[:400]}"
+        )
+
+
+@pytest.fixture(scope="session")
+def postgrest(settings: Any) -> PostgRESTHelper:
+    return PostgRESTHelper(settings.supabase_url, settings.supabase_anon_key)
+
+
+# ── database helpers (admin only — optional, for privileged verification) ──
 
 
 class AdminDb:
@@ -106,6 +232,8 @@ class AdminDb:
 
     This bypasses RLS on purpose: it is how we *prove* what is really stored,
     independently of what the API or RLS lets a user see.
+
+    Only available when DATABASE_URL is configured and reachable.
     """
 
     def __init__(self, dsn: str) -> None:
@@ -133,57 +261,6 @@ class AdminDb:
         return int(self._run(sql, params, fetch=False))
 
 
-class ScopedDb:
-    """Runs SQL as PostgreSQL role `authenticated` with given JWT claims.
-
-    Uses the exact same session statements as
-    `app.repositories.base.user_scoped_connection`, so a denial here is the
-    denial a real request would receive.
-    """
-
-    def __init__(self, dsn: str) -> None:
-        self._dsn = dsn
-
-    async def _run(
-        self, sql: str, params: tuple[Any, ...], claims: dict[str, Any]
-    ) -> tuple[list[dict[str, Any]], int]:
-        import psycopg
-        from psycopg.rows import dict_row
-
-        conn = await psycopg.AsyncConnection.connect(self._dsn, row_factory=dict_row)
-        try:
-            async with conn.transaction():
-                for statement, statement_params in claims_session_statements(claims):
-                    await conn.execute(statement, statement_params)
-                cursor = await conn.execute(sql, params)
-                rows = list(await cursor.fetchall()) if cursor.description else []
-                return rows, cursor.rowcount
-        finally:
-            await conn.close()
-
-    def select(self, sql: str, params: tuple[Any, ...], claims: dict[str, Any]) -> list[dict[str, Any]]:
-        rows, _ = asyncio.run(self._run(sql, params, claims))
-        return rows
-
-    def execute(self, sql: str, params: tuple[Any, ...], claims: dict[str, Any]) -> int:
-        _, rowcount = asyncio.run(self._run(sql, params, claims))
-        return rowcount
-
-    def execute_expecting_denial(
-        self, sql: str, params: tuple[Any, ...], claims: dict[str, Any]
-    ) -> str | None:
-        """Run a statement that must be refused.
-
-        Returns the error class name when PostgreSQL refused it, or None when the
-        statement unexpectedly succeeded (which the caller asserts against).
-        """
-        try:
-            self.execute(sql, params, claims)
-        except Exception as exc:  # noqa: BLE001 - the error class is the evidence
-            return type(exc).__name__
-        return None
-
-
 def claims_for(user_id: str, role: str = "student") -> dict[str, Any]:
     """Claims shaped like a verified Supabase access token for `user_id`."""
     return {
@@ -197,13 +274,14 @@ def claims_for(user_id: str, role: str = "student") -> dict[str, Any]:
 
 
 @pytest.fixture(scope="session")
-def admin_db(settings: Any) -> AdminDb:
+def admin_db(settings: Any) -> AdminDb | None:
+    """Direct PostgreSQL access — optional, only when DATABASE_URL is reachable."""
+    if not settings.database_url:
+        pytest.skip(
+            "DATABASE_URL is not configured — admin_db unavailable; "
+            "PostgREST verification proceeds without direct DB checks"
+        )
     return AdminDb(settings.database_url)
-
-
-@pytest.fixture(scope="session")
-def scoped_db(settings: Any) -> ScopedDb:
-    return ScopedDb(settings.database_url)
 
 
 # ── live accounts ─────────────────────────────────────────────────────────
@@ -313,7 +391,7 @@ def require_session(account: LiveAccount) -> str:
     if not token:
         pytest.skip(
             "no session issued at signup — the project appears to require email "
-            "confirmation, which this suite will not fake. Confirm the account or "
+            "confirmation, which this suite will not fake.  Confirm the account or "
             "disable email confirmation for the development project, then re-run."
         )
     return token

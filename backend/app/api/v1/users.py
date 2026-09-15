@@ -36,4 +36,4 @@ async def update_profile(
     user: CurrentUser = Depends(get_current_user),
     service: AuthService = Depends(get_auth_service),
 ) -> ProfileOut:
-    return await service.update_profile(user.claims, payload)
+    return await service.update_profile(user.claims, user.access_token, payload)

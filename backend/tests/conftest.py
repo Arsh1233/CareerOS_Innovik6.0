@@ -1,7 +1,7 @@
 """Test configuration.
 
 Environment is set before the application is imported so `Settings` resolves
-without a live Supabase project. Tests never talk to a real provider: the
+without a live Supabase project.  Tests never talk to a real provider: the
 Supabase integration and the repository are replaced through dependency
 overrides.
 """

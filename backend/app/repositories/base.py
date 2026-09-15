@@ -1,13 +1,19 @@
 """PostgreSQL access with Supabase-compatible row level security.
 
-PostgreSQL is the source of truth. Every user-facing query runs on a connection
-where the PostgreSQL role is switched to `authenticated` and the *verified* JWT
-claims are published as `request.jwt.claims`. RLS policies in
-`supabase/migrations` therefore enforce ownership server-side, at the database,
-in addition to the API's own authorisation checks.
+PostgreSQL is the source of truth.  Every user-facing query runs through
+Supabase PostgREST over HTTPS using the authenticated user's JWT — RLS
+policies enforce ownership at the database level automatically.
 
-Using the service-role connection to serve user requests would bypass RLS, so
-that connection is reserved for administrative migrations/jobs only.
+    FastAPI -> Supabase PostgREST -> RLS -> PostgreSQL
+
+This module provides:
+  - A direct PostgreSQL connection pool for migrations, admin jobs, and the
+    live verification suite's privileged assertions.
+  - Helper functions that reproduce the authenticated user's session context
+    so the live tests can exercise RLS without PostgREST.
+
+The service-role connection is reserved for administrative migrations/jobs only
+and must never serve user requests.
 """
 
 from __future__ import annotations
@@ -16,20 +22,20 @@ import json
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Sequence
 
-from psycopg.rows import dict_row
-from psycopg_pool import AsyncConnectionPool
-
 from app.core.config import get_settings
 from app.core.errors import ApiError
 
-_pool: AsyncConnectionPool | None = None
+# Lazy import: psycopg is only needed when direct PostgreSQL access is used
+# (migrations, admin jobs, live tests).  The normal API path uses PostgREST.
+_pool = None
 
 
-async def get_pool() -> AsyncConnectionPool:
-    """Lazily create the shared connection pool.
+async def get_pool():
+    """Lazily create the shared direct PostgreSQL connection pool.
 
     Deferred so the API can boot (and report `/health`) before a database is
-    configured.
+    configured.  Normal user requests do NOT use this pool — they go through
+    PostgREST over HTTPS.
     """
     global _pool
     settings = get_settings()
@@ -37,10 +43,13 @@ async def get_pool() -> AsyncConnectionPool:
         raise ApiError(
             503,
             "database_not_configured",
-            "The server is not connected to its database yet.",
+            "Direct database access is not configured on the server.",
         )
 
     if _pool is None:
+        from psycopg.rows import dict_row
+        from psycopg_pool import AsyncConnectionPool
+
         _pool = AsyncConnectionPool(
             conninfo=settings.database_url,
             min_size=0,
@@ -87,7 +96,11 @@ async def apply_claims_session(conn: Any, claims: dict[str, Any]) -> None:
 
 @asynccontextmanager
 async def user_scoped_connection(claims: dict[str, Any]) -> AsyncIterator[Any]:
-    """Connection that executes as `authenticated` with the caller's claims."""
+    """Connection that executes as `authenticated` with the caller's claims.
+
+    This is used by the live verification suite to exercise RLS directly.
+    Normal user requests go through PostgREST, not this path.
+    """
     pool = await get_pool()
     async with pool.connection() as conn:
         async with conn.transaction():
