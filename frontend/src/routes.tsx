@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router";
-import { useAuth } from "./context/AuthContext";
+import { ROLE_HOME, useAuth } from "./context/AuthContext";
 import AppShell, { RoleIndex } from "./components/AppShell";
+import AuthLoading from "./components/AuthLoading";
 
 // ── Standalone pages ─────────────────────────────────────────────────────
 import LandingPage from "./pages/LandingPage";
@@ -32,15 +33,12 @@ import RoadmapPage from "./pages/RoadmapPage";
 import ProgressPage from "./pages/ProgressPage";
 
 function RootRedirect() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
+  // Wait for the session restore call before deciding anything: while loading,
+  // the user is neither authenticated nor unauthenticated.
+  if (isLoading) return <AuthLoading />;
   if (!user) return <Navigate to="/landing" replace />;
-  const homes: Record<string, string> = {
-    student: "/dashboard",
-    college: "/college",
-    recruiter: "/recruiter",
-    admin: "/admin",
-  };
-  return <Navigate to={homes[user.role] ?? "/landing"} replace />;
+  return <Navigate to={ROLE_HOME[user.role] ?? "/landing"} replace />;
 }
 
 export const router = createBrowserRouter([

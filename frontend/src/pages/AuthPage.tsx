@@ -6,7 +6,6 @@ import {
 } from "lucide-react";
 import EcosystemVisual from "../components/auth/EcosystemVisual";
 import { FormField, TextInput, PasswordInput, SelectField } from "../components/ui/FormField";
-import { useAuth } from "../context/AuthContext";
 import type { Role } from "../context/AuthContext";
 
 type Mode = "login" | "signup";
@@ -457,35 +456,18 @@ function GoogleButton() {
 
 // ---------- Main Auth Page ----------
 
-const ONBOARDING_ROUTES: Record<Role, string> = {
-  student: "/onboarding/student",
-  college: "/onboarding/college",
-  recruiter: "/onboarding/recruiter",
-  admin: "/admin",
-};
-
 export default function AuthPage() {
   const navigate = useNavigate();
-  const { signIn } = useAuth();
   const [mode, setMode] = useState<Mode>("login");
   const [role, setRole] = useState<Role>("student");
 
   function handleSuccess() {
-    signIn({ role, email: "", name: "", onboardingComplete: false });
-    if (role === "admin") {
-      navigate("/admin");
-    } else if (mode === "signup") {
-      navigate(ONBOARDING_ROUTES[role]);
-    } else {
-      // Existing user — go to their dashboard
-      const dashRoutes: Record<Role, string> = {
-        student: "/dashboard",
-        college: "/college",
-        recruiter: "/recruiter",
-        admin: "/admin",
-      };
-      navigate(dashRoutes[role]);
-    }
+    // This page is a legacy, unrouted variant of the auth flow and must not
+    // sign anyone in locally. Send the user to the real role portal, which
+    // calls the FastAPI /auth/login endpoint and takes the role from the
+    // verified backend identity.
+    const target = role === "admin" ? "/auth/admin" : `/auth/${role}`;
+    navigate(mode === "signup" ? `${target}?mode=signup` : target);
   }
 
   const cfg = roleConfig[role];

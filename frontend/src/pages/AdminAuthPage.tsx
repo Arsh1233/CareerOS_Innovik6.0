@@ -1,10 +1,11 @@
-import { useState, FormEvent } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import { useNavigate, Link } from "react-router";
 import { ShieldCheck, Mail, Loader2, ArrowLeft, AlertCircle, CheckCircle } from "lucide-react";
-import { FormField, TextInput, PasswordInput, OTPInput } from "../components/ui/FormField";
-import { useAuth } from "../context/AuthContext";
+import { FormField, TextInput, PasswordInput } from "../components/ui/FormField";
+import { ROLE_LABEL, useAuth, type Role } from "../context/AuthContext";
+import { isApiError, userMessage } from "../lib/api";
 
-type Stage = "credentials" | "otp" | "success";
+type Stage = "credentials" | "success";
 
 export default function AdminAuthPage() {
   const navigate = useNavigate();
@@ -12,46 +13,45 @@ export default function AdminAuthPage() {
   const [stage, setStage] = useState<Stage>("credentials");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [otp, setOtp] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState("");
+  const [redirectRole, setRedirectRole] = useState<Role | null>(null);
   const [loading, setLoading] = useState(false);
-  const [otpError, setOtpError] = useState("");
+
+  // The previous flow verified a hardcoded demo code client-side. Admin access
+  // is now decided by the backend identity: the account must carry the `admin`
+  // role in its verified token, which only the service role can grant.
+  useEffect(() => {
+    if (stage !== "success") return;
+    const timer = setTimeout(() => navigate("/admin"), 900);
+    return () => clearTimeout(timer);
+  }, [stage, navigate]);
 
   async function handleCredentials(ev: FormEvent) {
     ev.preventDefault();
-    const e: Record<string, string> = {};
-    if (!email.trim()) e.email = "Admin email is required";
-    else if (!/\S+@\S+\.\S+/.test(email)) e.email = "Enter a valid email";
-    if (!password) e.password = "Password is required";
-    setErrors(e);
-    if (Object.keys(e).length) return;
+    if (loading) return;
+
+    const nextErrors: Record<string, string> = {};
+    if (!email.trim()) nextErrors.email = "Admin email is required";
+    else if (!/\S+@\S+\.\S+/.test(email)) nextErrors.email = "Enter a valid email";
+    if (!password) nextErrors.password = "Password is required";
+    setErrors(nextErrors);
+    setFormError("");
+    setRedirectRole(null);
+    if (Object.keys(nextErrors).length) return;
 
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 1400));
-    setLoading(false);
-    setStage("otp");
-  }
-
-  async function handleOTP(ev: FormEvent) {
-    ev.preventDefault();
-    if (otp.length < 6) {
-      setOtpError("Enter all 6 digits");
-      return;
+    try {
+      await signIn({ email: email.trim(), password, expectedRole: "admin" });
+      setStage("success");
+    } catch (err) {
+      if (isApiError(err) && err.code === "role_mismatch") {
+        setRedirectRole((err.details.actualRole as Role | undefined) ?? null);
+      }
+      setFormError(userMessage(err));
+    } finally {
+      setLoading(false);
     }
-    setOtpError("");
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    setLoading(false);
-
-    if (otp !== "123456") {
-      setOtpError("Invalid verification code. Try 123456 for demo.");
-      return;
-    }
-
-    setStage("success");
-    signIn({ role: "admin", email, name: "Admin", onboardingComplete: true });
-    await new Promise((r) => setTimeout(r, 1200));
-    navigate("/admin");
   }
 
   return (
@@ -94,8 +94,24 @@ export default function AdminAuthPage() {
               <>
                 <div className="mb-5">
                   <h2 className="font-display text-lg font-bold text-[#101828] mb-0.5">Admin Login</h2>
-                  <p className="text-xs text-[#667085]">Enter your credentials. A 2FA code will be sent to your device.</p>
+                  <p className="text-xs text-[#667085]">Sign in with an administrator account.</p>
                 </div>
+
+                {formError && (
+                  <div className="mb-3.5 flex items-center gap-2 p-2.5 rounded-lg bg-[#E5484D]/8 border border-[#E5484D]/20 text-xs text-[#E5484D]">
+                    <AlertCircle size={12} className="shrink-0" /> {formError}
+                  </div>
+                )}
+
+                {redirectRole && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(redirectRole === "admin" ? "/auth/admin" : `/auth/${redirectRole}`)}
+                    className="mb-3.5 w-full py-2 rounded-xl border border-[#D0D5DD] text-[12px] font-semibold text-[#344054] hover:bg-[#F7F9FC] transition-colors"
+                  >
+                    Go to {ROLE_LABEL[redirectRole]} login
+                  </button>
+                )}
 
                 <form onSubmit={handleCredentials} className="space-y-3.5">
                   <FormField label="Admin Email" error={errors.email} required>
@@ -138,48 +154,6 @@ export default function AdminAuthPage() {
               </>
             )}
 
-            {stage === "otp" && (
-              <>
-                <div className="text-center mb-6">
-                  <div className="w-12 h-12 rounded-full bg-[#4F7CFF]/10 flex items-center justify-center mx-auto mb-3">
-                    <Mail size={20} className="text-[#4F7CFF]" />
-                  </div>
-                  <h2 className="font-display text-lg font-bold text-[#101828] mb-1">Verification Code</h2>
-                  <p className="text-xs text-[#667085]">
-                    A 6-digit code was sent to <strong>{email}</strong>
-                  </p>
-                  <p className="text-[10px] text-[#98A2B3] mt-1">Use <strong>123456</strong> for this demo</p>
-                </div>
-
-                <form onSubmit={handleOTP} className="space-y-4">
-                  <OTPInput value={otp} onChange={setOtp} length={6} />
-
-                  {otpError && (
-                    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-[#E5484D]/8 border border-[#E5484D]/20 text-xs text-[#E5484D]">
-                      <AlertCircle size={12} /> {otpError}
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={loading || otp.length < 6}
-                    className="w-full py-2.5 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2 transition-all disabled:opacity-40"
-                    style={{ background: "linear-gradient(135deg, #1a1f3e, #2d3476)" }}
-                  >
-                    {loading ? <Loader2 size={15} className="animate-spin" /> : <><ShieldCheck size={14} /> Verify & Enter Admin Panel</>}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setStage("credentials")}
-                    className="w-full text-xs text-[#98A2B3] hover:text-[#667085] transition-colors"
-                  >
-                    ← Change email address
-                  </button>
-                </form>
-              </>
-            )}
-
             {stage === "success" && (
               <div className="text-center py-4 space-y-3">
                 <div className="w-12 h-12 rounded-full bg-[#22A06B]/10 flex items-center justify-center mx-auto">
@@ -198,7 +172,7 @@ export default function AdminAuthPage() {
         {/* Security badge */}
         <div className="flex items-center justify-center gap-2 mt-4">
           <ShieldCheck size={12} className="text-[#98A2B3]" />
-          <span className="text-[10px] text-[#98A2B3]">256-bit encrypted · Session logged · MFA enforced</span>
+          <span className="text-[10px] text-[#98A2B3]">Role enforced server-side · Session logged</span>
         </div>
       </div>
     </div>

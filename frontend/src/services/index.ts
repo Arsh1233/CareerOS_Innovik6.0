@@ -1,34 +1,19 @@
-// Centralized mock service layer.
-// All methods return Promises to mirror real async APIs.
-// In a production build, swap these implementations for real API clients.
+// MOCK service layer for capabilities that are NOT connected to the backend yet.
+//
+// ⚠️ Everything below returns hardcoded values behind a Promise delay. None of
+// it persists anything, and none of it may be presented as real data.
+//
+// Migrated to the real API and removed from this file:
+//   ✗ authService     → src/lib/api/auth.ts    (FastAPI /auth/*)
+//   ✗ profileService  → src/lib/api/users.ts   (FastAPI /users/*)
+//
+// Still mocked here (awaiting their phases): resumeService, skillsService,
+// roadmapService, jobsService, notificationService, collegeService,
+// recruiterService, adminService, supportService, subscriptionService.
 
 function delay<T>(value: T, ms = 1000): Promise<T> {
   return new Promise((res) => setTimeout(() => res(value), ms));
 }
-
-// ── Auth ─────────────────────────────────────────────────────────────────
-
-export const authService = {
-  resetPassword: (email: string) =>
-    delay({ success: true, message: `Reset link sent to ${email}` }, 1200),
-  loginWithGoogle: () =>
-    delay({ success: false, message: "Google sign-in is not available in this environment." }, 800),
-};
-
-// ── Profile ───────────────────────────────────────────────────────────────
-
-export const profileService = {
-  save: (data: Record<string, unknown>) =>
-    delay({ success: true, data }, 900),
-  changePassword: (current: string, next: string) => {
-    if (!current || !next) return delay({ success: false, message: "All fields required." }, 500);
-    return delay({ success: true }, 1000);
-  },
-  replaceResume: (file: File) =>
-    delay({ success: true, filename: file.name }, 1400),
-  deleteAccount: () =>
-    delay({ success: true }, 1500),
-};
 
 // ── Resume ────────────────────────────────────────────────────────────────
 
@@ -145,7 +130,9 @@ export const adminService = {
 // ── Support ───────────────────────────────────────────────────────────────
 
 export const supportService = {
-  sendFeedback: (type: string, message: string) => {
+  // Explicit return type: the two branches differ, and callers read `.message`
+  // on the failure branch.
+  sendFeedback: (type: string, message: string): Promise<{ success: boolean; message?: string }> => {
     if (!message.trim()) return delay({ success: false, message: "Please write your feedback first." }, 200);
     return delay({ success: true }, 800);
   },

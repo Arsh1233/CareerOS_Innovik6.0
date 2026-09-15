@@ -1,5 +1,8 @@
-import { useState } from "react";
-import { User, GraduationCap, Target, Zap, FileText, Shield, Edit2, Check } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { User, GraduationCap, Target, Zap, FileText, Shield, Edit2, Check, Loader2, AlertCircle } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
+import { userMessage } from "../lib/api";
 
 const sections = [
   { id: "personal", icon: User, label: "Personal Info" },
@@ -10,9 +13,93 @@ const sections = [
   { id: "security", icon: Shield, label: "Account & Security" },
 ];
 
+const ONBOARDING_LABEL: Record<string, string> = {
+  not_started: "Onboarding not started",
+  in_progress: "Onboarding in progress",
+  complete: "Profile complete",
+};
+
+type DraftField = "display_name" | "phone" | "location" | "linkedin_url" | "github_url";
+
+const EMPTY_DRAFT: Record<DraftField, string> = {
+  display_name: "",
+  phone: "",
+  location: "",
+  linkedin_url: "",
+  github_url: "",
+};
+
 export default function ProfilePage() {
+  const { user, profile, sessionError, updateProfile } = useAuth();
+  const { success, error: showError } = useToast();
   const [active, setActive] = useState("personal");
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState<Record<DraftField, string>>(EMPTY_DRAFT);
+
+  // Reload the form fields whenever the persisted profile changes.
+  useEffect(() => {
+    if (editing) return;
+    setDraft({
+      display_name: profile?.display_name ?? "",
+      phone: profile?.phone ?? "",
+      location: profile?.location ?? "",
+      linkedin_url: profile?.linkedin_url ?? "",
+      github_url: profile?.github_url ?? "",
+    });
+  }, [editing, profile]);
+
+  const initials = useMemo(() => {
+    const name = user?.name?.trim();
+    if (!name) return "—";
+    return name.split(/\s+/).map((word) => word[0]).join("").slice(0, 2).toUpperCase();
+  }, [user]);
+
+  const education = profile?.education ?? [];
+  const salary = profile?.target_salary_inr;
+
+  async function handleSave() {
+    if (saving) return;
+
+    // Only send fields that have a value; the backend rejects empty updates and
+    // unknown keys, and cannot store an empty display name.
+    const trimmed = {
+      display_name: draft.display_name.trim() || undefined,
+      phone: draft.phone.trim() || undefined,
+      location: draft.location.trim() || undefined,
+      linkedin_url: draft.linkedin_url.trim() || undefined,
+      github_url: draft.github_url.trim() || undefined,
+    };
+
+    if (Object.values(trimmed).every((value) => value === undefined)) {
+      showError("Nothing to save yet.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // Success is only reported after the backend returns the persisted row.
+      await updateProfile(trimmed);
+      success("Profile saved.");
+      setEditing(false);
+    } catch (err) {
+      showError(userMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const personalFields: { label: string; key: DraftField | null; value: string }[] = [
+    { label: "Full Name", key: "display_name", value: profile?.display_name ?? "" },
+    { label: "Email", key: null, value: profile?.email ?? user?.email ?? "" },
+    { label: "Phone", key: "phone", value: profile?.phone ?? "" },
+    { label: "Location", key: "location", value: profile?.location ?? "" },
+    { label: "LinkedIn", key: "linkedin_url", value: profile?.linkedin_url ?? "" },
+    { label: "GitHub", key: "github_url", value: profile?.github_url ?? "" },
+  ];
+
+  const inputCls =
+    "w-full px-3 py-2 rounded-lg border border-[#D0D5DD] text-sm text-[#101828] focus:outline-none focus:ring-2 focus:ring-[#4F7CFF]/30 focus:border-[#4F7CFF] transition-all";
 
   return (
     <div className="p-6 max-w-[900px] mx-auto">
@@ -27,12 +114,20 @@ export default function ProfilePage() {
           {/* Avatar card */}
           <div className="bg-white rounded-2xl border border-[#E4E7EC] p-5 mb-4 text-center">
             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#4F7CFF] to-[#8B7CFF] flex items-center justify-center text-white text-xl font-bold mx-auto mb-3">
-              RK
+              {initials}
             </div>
-            <p className="font-display font-semibold text-[#101828]">Rohan Kumar</p>
-            <p className="text-xs text-[#667085] mt-0.5">B.Tech CSE · SRM Institute</p>
+            <p className="font-display font-semibold text-[#101828]">{user?.name || "—"}</p>
+            <p className="text-xs text-[#667085] mt-0.5">
+              {education[0]
+                ? `${education[0].degree} · ${education[0].institution}`
+                : profile
+                  ? "No education added yet"
+                  : "Profile not created yet"}
+            </p>
             <div className="mt-3 px-3 py-1.5 rounded-full bg-[#4F7CFF]/8 border border-[#4F7CFF]/15">
-              <span className="text-xs font-semibold text-[#4F7CFF]">78% Career Readiness</span>
+              <span className="text-xs font-semibold text-[#4F7CFF]">
+                {profile ? ONBOARDING_LABEL[profile.onboarding_state] ?? "Profile" : "Profile not created"}
+              </span>
             </div>
           </div>
 
@@ -54,41 +149,57 @@ export default function ProfilePage() {
 
         {/* Content */}
         <div className="bg-white rounded-2xl border border-[#E4E7EC] p-6">
+          {!profile && (
+            <div className="mb-5 p-3 rounded-xl bg-[#F59E0B]/6 border border-[#F59E0B]/20 flex items-start gap-2">
+              <AlertCircle size={13} className="text-[#F59E0B] mt-0.5 shrink-0" />
+              <p className="text-xs text-[#667085] leading-relaxed">
+                {sessionError ??
+                  "No profile exists for this account yet. Finish onboarding to create one."}
+              </p>
+            </div>
+          )}
+
           {active === "personal" && (
             <div>
               <div className="flex items-center justify-between mb-5">
                 <h2 className="font-display font-semibold text-[#101828]">Personal Information</h2>
                 <button
-                  onClick={() => setEditing(!editing)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  onClick={editing ? handleSave : () => setEditing(true)}
+                  disabled={saving || !profile}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                     editing ? "bg-[#22A06B]/8 text-[#22A06B] border border-[#22A06B]/20" : "border border-[#E4E7EC] text-[#667085]"
                   }`}
                 >
-                  {editing ? <><Check size={12} /> Save</> : <><Edit2 size={12} /> Edit</>}
+                  {saving ? (
+                    <><Loader2 size={12} className="animate-spin" /> Saving</>
+                  ) : editing ? (
+                    <><Check size={12} /> Save</>
+                  ) : (
+                    <><Edit2 size={12} /> Edit</>
+                  )}
                 </button>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
-                {[
-                  { label: "Full Name", value: "Rohan Kumar" },
-                  { label: "Email", value: "rohan.kumar@srm.edu.in" },
-                  { label: "Phone", value: "+91 98765 43210" },
-                  { label: "Location", value: "Chennai, Tamil Nadu" },
-                  { label: "LinkedIn", value: "linkedin.com/in/rohankumar" },
-                  { label: "GitHub", value: "github.com/rohankumar" },
-                ].map((field) => (
+                {personalFields.map((field) => (
                   <div key={field.label}>
                     <label className="block text-xs font-semibold text-[#475467] mb-1.5">{field.label}</label>
-                    {editing ? (
+                    {editing && field.key ? (
                       <input
-                        defaultValue={field.value}
-                        className="w-full px-3 py-2 rounded-lg border border-[#D0D5DD] text-sm text-[#101828] focus:outline-none focus:ring-2 focus:ring-[#4F7CFF]/30 focus:border-[#4F7CFF] transition-all"
+                        value={draft[field.key]}
+                        onChange={(e) => setDraft((prev) => ({ ...prev, [field.key!]: e.target.value }))}
+                        className={inputCls}
                       />
                     ) : (
-                      <p className="text-sm text-[#101828] py-2 px-3 rounded-lg bg-[#F7F9FC]">{field.value}</p>
+                      <p className="text-sm text-[#101828] py-2 px-3 rounded-lg bg-[#F7F9FC]">
+                        {field.value || "—"}
+                      </p>
                     )}
                   </div>
                 ))}
               </div>
+              <p className="mt-4 text-[11px] text-[#98A2B3]">
+                Email is managed by your account and cannot be changed here.
+              </p>
             </div>
           )}
 
@@ -96,19 +207,24 @@ export default function ProfilePage() {
             <div>
               <h2 className="font-display font-semibold text-[#101828] mb-5">Education</h2>
               <div className="space-y-4">
-                {[
-                  { degree: "B.Tech — Computer Science & Engineering", inst: "SRM Institute of Science and Technology", year: "2022 — 2026", cgpa: "8.7 / 10" },
-                  { degree: "Class XII — Science (PCM + CS)", inst: "DAV Public School, Chennai", year: "2022", cgpa: "92.4%" },
-                ].map((edu) => (
-                  <div key={edu.degree} className="p-4 rounded-xl border border-[#E4E7EC] bg-[#F9FAFB]">
-                    <p className="font-display font-semibold text-[#101828]">{edu.degree}</p>
-                    <p className="text-sm text-[#667085] mt-0.5">{edu.inst}</p>
-                    <div className="flex items-center gap-4 mt-2 text-xs text-[#98A2B3]">
-                      <span>{edu.year}</span>
-                      <span className="font-semibold text-[#22A06B]">{edu.cgpa}</span>
-                    </div>
+                {education.length === 0 ? (
+                  <div className="p-4 rounded-xl border border-dashed border-[#D0D5DD] bg-[#F9FAFB]">
+                    <p className="text-sm text-[#667085]">No education added yet.</p>
                   </div>
-                ))}
+                ) : (
+                  education.map((edu) => (
+                    <div key={`${edu.degree}-${edu.institution}`} className="p-4 rounded-xl border border-[#E4E7EC] bg-[#F9FAFB]">
+                      <p className="font-display font-semibold text-[#101828]">{edu.degree}</p>
+                      <p className="text-sm text-[#667085] mt-0.5">{edu.institution}</p>
+                      <div className="flex items-center gap-4 mt-2 text-xs text-[#98A2B3]">
+                        {(edu.start_year || edu.end_year) && (
+                          <span>{edu.start_year ?? "—"} — {edu.end_year ?? "—"}</span>
+                        )}
+                        {edu.grade && <span className="font-semibold text-[#22A06B]">{edu.grade}</span>}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -119,21 +235,23 @@ export default function ProfilePage() {
               <div className="space-y-4">
                 <div className="p-4 rounded-xl border border-[#4F7CFF]/25 bg-[#4F7CFF]/4">
                   <p className="text-xs font-semibold text-[#4F7CFF] mb-1">Target Role</p>
-                  <p className="font-display text-lg font-bold text-[#101828]">AI Engineer</p>
-                  <p className="text-xs text-[#667085] mt-1">Machine Learning · GenAI · Full Stack AI</p>
+                  <p className="font-display text-lg font-bold text-[#101828]">
+                    {profile?.target_role_name || "Not set yet"}
+                  </p>
                 </div>
                 {[
-                  { label: "Industry", value: "Technology / AI" },
-                  { label: "Preferred Location", value: "Bangalore, Hyderabad, Remote" },
-                  { label: "Expected CTC", value: "₹18–28 LPA" },
-                  { label: "Availability", value: "May 2026 (Post graduation)" },
-                  { label: "Work Mode", value: "Hybrid / Remote" },
+                  { label: "Expected CTC", value: typeof salary === "number" ? `₹${salary.toLocaleString("en-IN")} / year` : "—" },
+                  { label: "Timeframe", value: profile?.timeframe_years != null ? `${profile.timeframe_years} years` : "—" },
+                  { label: "Discoverable to recruiters", value: profile?.discoverability ? "Yes" : "No" },
                 ].map((f) => (
                   <div key={f.label} className="flex items-center justify-between py-3 border-b border-[#F1F5F9] last:border-0">
                     <span className="text-sm text-[#667085]">{f.label}</span>
                     <span className="text-sm font-medium text-[#101828]">{f.value}</span>
                   </div>
                 ))}
+                <p className="text-[11px] text-[#98A2B3]">
+                  Industry, preferred location, availability and work mode are not captured by the backend yet.
+                </p>
               </div>
             </div>
           )}
@@ -141,27 +259,11 @@ export default function ProfilePage() {
           {active === "skills" && (
             <div>
               <h2 className="font-display font-semibold text-[#101828] mb-5">Skills</h2>
-              <div className="space-y-4">
-                {[
-                  { category: "Strong", skills: ["Python", "TensorFlow", "Scikit-learn", "SQL", "Git", "FastAPI"], color: "#22A06B" },
-                  { category: "Learning", skills: ["Kubernetes", "MLOps", "LLM Fine-tuning", "System Design"], color: "#F59E0B" },
-                  { category: "Familiar", skills: ["Spark", "Kafka", "AWS SageMaker", "Tableau"], color: "#667085" },
-                ].map((cat) => (
-                  <div key={cat.category}>
-                    <p className="text-xs font-semibold mb-2" style={{ color: cat.color }}>{cat.category}</p>
-                    <div className="flex flex-wrap gap-2">
-                      {cat.skills.map((s) => (
-                        <span
-                          key={s}
-                          className="px-2.5 py-1 rounded-full text-xs font-medium border"
-                          style={{ background: `${cat.color}10`, color: cat.color, borderColor: `${cat.color}25` }}
-                        >
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+              <div className="p-4 rounded-xl border border-dashed border-[#D0D5DD] bg-[#F9FAFB]">
+                <p className="text-sm text-[#667085]">Skill data is not connected yet.</p>
+                <p className="text-xs text-[#98A2B3] mt-1">
+                  Skills will be derived from your resume analysis and skill-gap diagnosis (later phase).
+                </p>
               </div>
             </div>
           )}
@@ -169,53 +271,51 @@ export default function ProfilePage() {
           {active === "resume" && (
             <div>
               <h2 className="font-display font-semibold text-[#101828] mb-5">Resume</h2>
-              <div className="p-4 rounded-xl border border-[#E4E7EC] flex items-center gap-4 mb-4">
-                <div className="w-10 h-10 rounded-lg bg-[#4F7CFF]/10 flex items-center justify-center">
-                  <FileText size={18} className="text-[#4F7CFF]" />
+              <div className="p-4 rounded-xl border border-dashed border-[#D0D5DD] bg-[#F9FAFB] text-center">
+                <div className="w-10 h-10 rounded-lg bg-[#E4E7EC] flex items-center justify-center mx-auto mb-2">
+                  <FileText size={18} className="text-[#98A2B3]" />
                 </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-sm text-[#101828]">Rohan_Kumar_Resume_2026.pdf</p>
-                  <p className="text-xs text-[#98A2B3]">Updated 3 days ago · ATS Score: 81/100</p>
-                </div>
-                <button className="btn-primary text-white text-xs font-semibold px-3 py-1.5 rounded-lg">
-                  Replace
-                </button>
+                <p className="text-sm text-[#667085]">Resume upload is not connected yet.</p>
+                <p className="text-xs text-[#98A2B3] mt-1">
+                  Upload, parsing and analysis arrive with the resume intelligence phase.
+                </p>
               </div>
-              <button className="w-full border-2 border-dashed border-[#D0D5DD] rounded-xl p-6 text-center text-[#98A2B3] text-sm hover:border-[#4F7CFF]/40 hover:text-[#667085] transition-colors">
-                Drop a new resume here or click to upload
-              </button>
             </div>
           )}
 
           {active === "security" && (
             <div>
-              <h2 className="font-display font-semibold text-[#101828] mb-5">Account & Security</h2>
+              <h2 className="font-display font-semibold text-[#101828] mb-5">Account &amp; Security</h2>
               <div className="space-y-4">
-                <div className="p-4 rounded-xl border border-[#E4E7EC]">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-sm text-[#101828]">Password</p>
-                      <p className="text-xs text-[#98A2B3] mt-0.5">Last changed 60 days ago</p>
-                    </div>
-                    <button className="text-xs font-semibold text-[#4F7CFF] border border-[#4F7CFF]/25 px-3 py-1.5 rounded-lg hover:bg-[#4F7CFF]/4 transition-colors">
-                      Change
-                    </button>
-                  </div>
+                <div className="p-3 rounded-xl bg-[#4F7CFF]/6 border border-[#4F7CFF]/20 flex items-start gap-2">
+                  <AlertCircle size={13} className="text-[#4F7CFF] mt-0.5 shrink-0" />
+                  <p className="text-xs text-[#667085] leading-relaxed">
+                    Password changes, two-factor authentication and account deletion are not connected yet. Use
+                    &ldquo;Forgot password&rdquo; on the sign-in page to reset your password.
+                  </p>
                 </div>
-                <div className="p-4 rounded-xl border border-[#E4E7EC]">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-sm text-[#101828]">Two-Factor Authentication</p>
-                      <p className="text-xs text-[#98A2B3] mt-0.5">Add an extra layer of security</p>
-                    </div>
-                    <div className="w-10 h-5 rounded-full bg-[#E4E7EC] relative cursor-pointer">
-                      <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm" />
+                {[
+                  { title: "Password", note: "Resets are handled from the sign-in page." },
+                  { title: "Two-Factor Authentication", note: "Not connected yet." },
+                ].map((row) => (
+                  <div key={row.title} className="p-4 rounded-xl border border-[#E4E7EC]">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-sm text-[#101828]">{row.title}</p>
+                        <p className="text-xs text-[#98A2B3] mt-0.5">{row.note}</p>
+                      </div>
+                      <button
+                        disabled
+                        className="text-xs font-semibold text-[#98A2B3] border border-[#E4E7EC] px-3 py-1.5 rounded-lg cursor-not-allowed"
+                      >
+                        Unavailable
+                      </button>
                     </div>
                   </div>
-                </div>
+                ))}
                 <div className="p-4 rounded-xl border border-[#E5484D]/20 bg-[#E5484D]/4">
                   <p className="font-semibold text-sm text-[#E5484D]">Delete Account</p>
-                  <p className="text-xs text-[#98A2B3] mt-0.5">This action is irreversible.</p>
+                  <p className="text-xs text-[#98A2B3] mt-0.5">Not connected yet.</p>
                 </div>
               </div>
             </div>

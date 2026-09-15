@@ -1,9 +1,9 @@
 import { useState, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { GraduationCap, Sparkles, Check, ArrowLeft, Loader2, Eye, EyeOff, X } from "lucide-react";
-import { useAuth } from "../../context/AuthContext";
+import { ROLE_LABEL, useAuth, type Role } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-import { authService } from "../../services/index";
+import { authApi, isApiError, userMessage } from "../../lib/api";
 
 type Mode = "login" | "signup";
 
@@ -30,7 +30,7 @@ function GoogleIcon() {
 export default function StudentAuth() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { signIn } = useAuth();
+  const { signIn, signUp } = useAuth();
   const { success, error: showError, info } = useToast();
 
   const [mode, setMode] = useState<Mode>(() =>
@@ -46,24 +46,33 @@ export default function StudentAuth() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [redirectRole, setRedirectRole] = useState<Role | null>(null);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
 
   async function handleForgotPassword() {
+    if (forgotLoading) return;
     if (!forgotEmail) { showError("Please enter your email address."); return; }
     setForgotLoading(true);
-    await authService.resetPassword(forgotEmail);
-    setForgotLoading(false);
-    setForgotOpen(false);
-    setForgotEmail("");
-    success("Password reset link sent! Check your email.");
+    try {
+      await authApi.requestPasswordReset(forgotEmail.trim());
+      setForgotOpen(false);
+      setForgotEmail("");
+      // The backend deliberately does not disclose whether the account exists.
+      success("If an account exists for this email, a password reset link has been sent.");
+    } catch (err) {
+      showError(userMessage(err));
+    } finally {
+      setForgotLoading(false);
+    }
   }
 
-  async function handleGoogleSignIn() {
-    const result = await authService.loginWithGoogle();
-    if (!result.success) info(result.message);
+  function handleGoogleSignIn() {
+    // Google OAuth is not wired to the backend yet. No fake sign-in.
+    info("Google sign-in is not connected yet. Please continue with your email and password.");
   }
 
   function switchMode(newMode: Mode) {
@@ -78,14 +87,51 @@ export default function StudentAuth() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     setError("");
+    setNotice("");
+    setRedirectRole(null);
     if (!email || !password) { setError("Please fill in all fields."); return; }
     if (mode === "signup" && password !== confirmPassword) { setError("Passwords do not match."); return; }
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 1400));
-    const isNew = mode === "signup";
-    signIn({ role: "student", email, name: name || email.split("@")[0], onboardingComplete: !isNew });
-    navigate(isNew ? "/onboarding/student" : "/dashboard");
+
+    try {
+      if (mode === "login") {
+        const signedIn = await signIn({
+          email: email.trim(),
+          password,
+          expectedRole: "student",
+        });
+        success(`Welcome back, ${signedIn.name.split(" ")[0]}`);
+        navigate("/dashboard");
+        return;
+      }
+
+      const outcome = await signUp({
+        email: email.trim(),
+        password,
+        full_name: name.trim() || email.trim().split("@")[0],
+        role: "student",
+      });
+
+      if (outcome.requiresEmailConfirmation) {
+        // The account exists but there is no session: do not pretend otherwise.
+        setNotice(outcome.message ?? "Check your email to confirm your account.");
+        switchMode("login");
+        return;
+      }
+
+      success("Account created. Let's finish your setup.");
+      navigate("/onboarding/student");
+    } catch (err) {
+      if (isApiError(err) && err.code === "role_mismatch") {
+        const actual = err.details.actualRole as Role | undefined;
+        setRedirectRole(actual ?? null);
+      }
+      setError(userMessage(err));
+    } finally {
+      setLoading(false);
+    }
   }
 
   const inputCls = "w-full px-3.5 py-2.5 rounded-xl border border-[#D0D5DD] text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-[#4F7CFF]/20 focus:border-[#4F7CFF] transition-all placeholder:text-[#C0C9D8]";
@@ -249,6 +295,20 @@ export default function StudentAuth() {
                 </label>
               )}
               {error && <p className="text-[12px] text-red-500">{error}</p>}
+              {notice && (
+                <p className="text-[12px] text-[#4F7CFF] bg-[#4F7CFF]/6 border border-[#4F7CFF]/20 rounded-lg px-3 py-2">
+                  {notice}
+                </p>
+              )}
+              {redirectRole && (
+                <button
+                  type="button"
+                  onClick={() => navigate(redirectRole === "admin" ? "/auth/admin" : `/auth/${redirectRole}`)}
+                  className="w-full py-2 rounded-xl border border-[#D0D5DD] text-[12px] font-semibold text-[#344054] hover:bg-[#F7F9FC] transition-colors"
+                >
+                  Go to {ROLE_LABEL[redirectRole]} login
+                </button>
+              )}
               <button
                 type="submit" disabled={loading}
                 className="w-full py-2.5 rounded-xl text-[13px] font-semibold text-white flex items-center justify-center gap-2 transition-all"

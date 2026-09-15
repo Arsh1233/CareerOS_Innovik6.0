@@ -10,6 +10,7 @@ import {
   CheckCheck, Loader2,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import AuthLoading from "./AuthLoading";
 import { useTheme } from "../context/ThemeContext";
 import { useToast } from "../context/ToastContext";
 import { notificationService, supportService, type Notification } from "../services/index";
@@ -746,7 +747,7 @@ function ProfileDropdown({
 
 export default function AppShell() {
   // All hooks unconditionally before early returns
-  const { user, signOut } = useAuth();
+  const { user, signOut, isLoading } = useAuth();
   const { isDark, theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const loc = useLocation();
@@ -838,7 +839,9 @@ export default function AppShell() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  // Early returns after all hooks
+  // Early returns after all hooks. While the stored session is being restored
+  // we must not redirect: "loading" is not "unauthenticated".
+  if (isLoading) return <AuthLoading />;
   if (!user) return <Navigate to="/landing" replace />;
 
   const role: Role = user.role;
@@ -868,9 +871,10 @@ export default function AppShell() {
     });
   }
 
-  function handleSignOut() {
+  async function handleSignOut() {
     setProfileOpen(false);
-    signOut();
+    // Clears local state first, then revokes the session server-side.
+    await signOut();
     navigate("/landing");
   }
 
