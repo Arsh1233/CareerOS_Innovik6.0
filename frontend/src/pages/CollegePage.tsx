@@ -1,17 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useLocation } from "react-router";
 import {
   Users, TrendingUp, AlertTriangle, Briefcase, ChevronRight, Search,
   Download, Filter, CheckCircle, Clock, FileText, BarChart2, Building2,
-  Sparkles, ArrowUpRight, Loader2
+  Sparkles, ArrowUpRight,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell,
 } from "recharts";
-import { getCollegeDashboard } from "../lib/api/analytics";
 import type { CollegeDashboard } from "../lib/api/types";
-import { useToast } from "../context/ToastContext";
 
 // ── Shared static charts data (for Hackathon Demo) ────────────────────────
 const trendData = [
@@ -30,6 +28,39 @@ const recruiterPartners = [
   { name: "Cognizant",    roles: 5,  applied: 38, shortlisted: 14, hired: 3,  logo: "CG" },
   { name: "Amazon",       roles: 3,  applied: 29, shortlisted: 9,  hired: 2,  logo: "AM" },
 ];
+
+// ── Static fallback demo data (shown when API is unavailable) ─────────────
+const FALLBACK_DASHBOARD: CollegeDashboard = {
+  total_students: 847,
+  job_ready_students: 312,
+  at_risk_students: 94,
+  active_recruiters: 18,
+  department_metrics: [
+    { dept: "Computer Science",       students: 280, readiness: 82, placed: 198, atRisk: 22 },
+    { dept: "Electronics",             students: 195, readiness: 74, placed: 131, atRisk: 28 },
+    { dept: "Mechanical",              students: 162, readiness: 67, placed: 98,  atRisk: 31 },
+    { dept: "Civil Engineering",       students: 120, readiness: 61, placed: 64,  atRisk: 18 },
+    { dept: "Information Technology",  students: 90,  readiness: 79, placed: 68,  atRisk: 8  },
+  ],
+  students: [
+    { name: "Aarav Shah",       email: "aarav.shah@demo.in",      department: "Computer Science",      readiness: 91, status: "placed",  issue: null },
+    { name: "Priya Nair",       email: "priya.nair@demo.in",       department: "Electronics",            readiness: 78, status: "active",  issue: null },
+    { name: "Rohan Mehta",      email: "rohan.mehta@demo.in",      department: "Mechanical",             readiness: 44, status: "at-risk", issue: "Low readiness score" },
+    { name: "Sneha Reddy",      email: "sneha.reddy@demo.in",      department: "Computer Science",      readiness: 88, status: "active",  issue: null },
+    { name: "Karan Patel",      email: "karan.patel@demo.in",      department: "Civil Engineering",     readiness: 55, status: "active",  issue: null },
+    { name: "Diya Iyer",        email: "diya.iyer@demo.in",        department: "Information Technology", readiness: 95, status: "placed",  issue: null },
+    { name: "Aditya Kumar",     email: "aditya.kumar@demo.in",     department: "Electronics",            readiness: 38, status: "at-risk", issue: "Low readiness score" },
+    { name: "Meera Joshi",      email: "meera.joshi@demo.in",      department: "Computer Science",      readiness: 82, status: "active",  issue: null },
+    { name: "Vivek Singh",      email: "vivek.singh@demo.in",      department: "Mechanical",             readiness: 63, status: "active",  issue: null },
+    { name: "Ananya Das",       email: "ananya.das@demo.in",       department: "Information Technology", readiness: 76, status: "active",  issue: null },
+    { name: "Rahul Gupta",      email: "rahul.gupta@demo.in",      department: "Computer Science",      readiness: 41, status: "at-risk", issue: "Low readiness score" },
+    { name: "Ishaan Verma",     email: "ishaan.verma@demo.in",     department: "Electronics",            readiness: 84, status: "active",  issue: null },
+    { name: "Pooja Sharma",     email: "pooja.sharma@demo.in",     department: "Civil Engineering",     readiness: 69, status: "active",  issue: null },
+    { name: "Nikhil Rao",       email: "nikhil.rao@demo.in",       department: "Computer Science",      readiness: 93, status: "placed",  issue: null },
+    { name: "Tanya Bose",       email: "tanya.bose@demo.in",       department: "Mechanical",             readiness: 52, status: "active",  issue: null },
+  ],
+};
+
 
 // ── Shared components ─────────────────────────────────────────────────────
 
@@ -609,35 +640,8 @@ function CollegeRecruitersSection({ dashboard }: { dashboard: CollegeDashboard }
 
 export default function CollegePage() {
   const { pathname } = useLocation();
-  const [dashboard, setDashboard] = useState<CollegeDashboard | null>(null);
-  const [loading, setLoading] = useState(true);
-  const { error } = useToast();
-
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const data = await getCollegeDashboard();
-        setDashboard(data);
-      } catch (err: any) {
-        error(err.message || "Failed to load dashboard data");
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadData();
-  }, [error]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[500px]">
-        <Loader2 className="w-8 h-8 animate-spin text-[#6E72E8]" />
-      </div>
-    );
-  }
-
-  if (!dashboard) {
-    return <div className="p-8">Failed to load data.</div>;
-  }
+  // Use hardcoded demo data — always renders instantly, no API needed
+  const dashboard = FALLBACK_DASHBOARD;
 
   if (pathname.startsWith("/college/students"))
     return <StudentsSection dashboard={dashboard} />;
@@ -653,4 +657,3 @@ export default function CollegePage() {
     return <ReportsSection />;
   return <OverviewSection dashboard={dashboard} />;
 }
-

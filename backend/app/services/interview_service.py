@@ -171,13 +171,29 @@ class InterviewService:
             status="complete",
         )
 
-        # Fetch transcript from ElevenLabs
+        # Fetch transcript from ElevenLabs — may need a brief retry since the
+        # transcript is written asynchronously after the conversation ends.
         transcript_data: list[Any] = []
         try:
-            conversation = await self._elevenlabs.get_conversation(
-                request.elevenlabs_conversation_id
-            )
-            transcript_data = conversation.get("transcript", [])
+            import asyncio
+            for attempt in range(3):
+                conversation = await self._elevenlabs.get_conversation(
+                    request.elevenlabs_conversation_id
+                )
+                # ElevenLabs may nest transcript under different keys
+                transcript_data = (
+                    conversation.get("transcript")
+                    or conversation.get("conversation", {}).get("transcript")
+                    or []
+                )
+                if transcript_data:
+                    break
+                if attempt < 2:
+                    logger.info(
+                        "echo_transcript_empty attempt=%d session_id=%s — retrying",
+                        attempt + 1, session_id,
+                    )
+                    await asyncio.sleep(2)
         except ApiError as exc:
             logger.warning(
                 "echo_transcript_fetch_failed session_id=%s el_conv_id=%s error=%s",

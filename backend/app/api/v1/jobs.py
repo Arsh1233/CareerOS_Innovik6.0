@@ -12,6 +12,13 @@ from app.schemas.jobs import (
     JobResponse,
 )
 from app.services.jobs_service import JobsService
+from app.services.job_discovery_service import JobDiscoveryService
+from app.integrations.hermes import HermesAgent, get_hermes_agent
+from app.integrations.web_reader import WebReader, get_web_reader
+from app.integrations.postgrest import PostgRESTClient
+from app.api.deps import get_postgrest_client
+from app.repositories.skills import SkillsRepository
+from app.schemas.discovery import DiscoverJobsResponse
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -21,12 +28,32 @@ def get_jobs_repository() -> JobsRepository:
     return JobsRepository()
 
 
+def get_skills_repository() -> SkillsRepository:
+    return SkillsRepository()
+
+
 def get_jobs_service(
     jobs_repo: JobsRepository = Depends(get_jobs_repository),
-    profiles_repo: ProfilesRepository = Depends(get_profiles_repository),
+    skills_repo: SkillsRepository = Depends(get_skills_repository),
     groq_client: GroqClient = Depends(get_groq_client),
 ) -> JobsService:
-    return JobsService(jobs_repo=jobs_repo, profiles_repo=profiles_repo, groq_client=groq_client)
+    return JobsService(jobs_repo=jobs_repo, skills_repo=skills_repo, groq_client=groq_client)
+
+
+def get_job_discovery_service(
+    hermes: HermesAgent = Depends(get_hermes_agent),
+    web_reader: WebReader = Depends(get_web_reader),
+    profiles_repo: ProfilesRepository = Depends(get_profiles_repository),
+    skills_repo: SkillsRepository = Depends(get_skills_repository),
+    postgrest: PostgRESTClient = Depends(get_postgrest_client),
+) -> JobDiscoveryService:
+    return JobDiscoveryService(
+        hermes=hermes,
+        web_reader=web_reader,
+        profiles_repo=profiles_repo,
+        skills_repo=skills_repo,
+        postgrest=postgrest,
+    )
 
 
 # ── Student Endpoints ──────────────────────────────────────────────────────
@@ -43,6 +70,23 @@ async def get_job_matches(
 ) -> list[JobMatchResponse]:
     """Return active jobs matched against the student's skills."""
     return await service.get_student_matches(
+        claims=user.claims,
+        access_token=user.access_token,
+    )
+
+
+@router.get(
+    "/discover",
+    response_model=DiscoverJobsResponse,
+    status_code=200,
+    summary="Discover jobs from external sources",
+)
+async def discover_jobs(
+    user: CurrentUser = Depends(require_roles("student")),
+    service: JobDiscoveryService = Depends(get_job_discovery_service),
+) -> DiscoverJobsResponse:
+    """Trigger Hermes agent to scrape and score jobs from external boards."""
+    return await service.discover_jobs(
         claims=user.claims,
         access_token=user.access_token,
     )

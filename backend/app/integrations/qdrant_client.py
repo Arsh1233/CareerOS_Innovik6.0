@@ -23,7 +23,7 @@ import logging
 import uuid
 from typing import Any
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 
 logger = logging.getLogger("careeros.qdrant")
@@ -171,11 +171,8 @@ class QdrantIntegration:
 _qdrant: QdrantIntegration | None = None
 
 
-def get_qdrant(settings: Settings | None = None) -> QdrantIntegration:
+def get_qdrant() -> QdrantIntegration:
     global _qdrant
     if _qdrant is None:
-        if settings is None:
-            from app.core.config import get_settings
-            settings = get_settings()
-        _qdrant = QdrantIntegration(settings)
+        _qdrant = QdrantIntegration(get_settings())
     return _qdrant

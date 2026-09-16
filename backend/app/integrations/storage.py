@@ -26,7 +26,7 @@ from typing import Any
 
 import httpx
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 
 logger = logging.getLogger("careeros.storage")
@@ -214,11 +214,8 @@ class StorageClient:
 _storage_client: StorageClient | None = None
 
 
-def get_storage_client(settings: Settings | None = None) -> StorageClient:
+def get_storage_client() -> StorageClient:
     global _storage_client
     if _storage_client is None:
-        if settings is None:
-            from app.core.config import get_settings
-            settings = get_settings()
-        _storage_client = StorageClient(settings)
+        _storage_client = StorageClient(get_settings())
     return _storage_client

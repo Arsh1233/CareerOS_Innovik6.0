@@ -17,7 +17,7 @@ from typing import Any
 
 import httpx
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 
 logger = logging.getLogger("careeros.groq")
@@ -233,15 +233,12 @@ class GroqClient:
 _groq_client: GroqClient | None = None
 
 
-def get_groq_client(settings: Settings | None = None) -> GroqClient:
+def get_groq_client() -> GroqClient:
     """Get or create the shared Groq client.
 
     Lazy instantiation so the API can boot without GROQ_API_KEY configured.
     """
     global _groq_client
     if _groq_client is None:
-        if settings is None:
-            from app.core.config import get_settings
-            settings = get_settings()
-        _groq_client = GroqClient(settings)
+        _groq_client = GroqClient(get_settings())
     return _groq_client

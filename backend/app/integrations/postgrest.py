@@ -56,9 +56,16 @@ class PostgRESTClient:
         """Headers that authenticate the request as the real user.
 
         Supabase evaluates RLS against this token's `sub` claim.
+
+        When the service-role key is used as the bearer token (admin operations
+        such as reading public job listings), the `apikey` header must also be
+        set to the service-role key, otherwise Supabase rejects the request.
         """
+        service_role_key = self._settings.supabase_service_role_key or ""
+        # Use service-role key as apikey when caller is using it as bearer
+        api_key = service_role_key if (service_role_key and access_token == service_role_key) else self._settings.supabase_anon_key
         return {
-            "apikey": self._settings.supabase_anon_key,
+            "apikey": api_key,
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
         }

@@ -8,6 +8,8 @@ authorization before invoking these methods.
 from __future__ import annotations
 
 import logging
+import time
+from threading import Lock
 from typing import Any
 
 import httpx
@@ -18,6 +20,29 @@ from app.core.errors import ApiError
 logger = logging.getLogger("careeros.analytics_repo")
 
 _TIMEOUT = 10.0
+_CACHE_TTL = 60  # seconds — fast enough to feel live, slow enough to be snappy
+
+_shared_client = httpx.Client(
+    timeout=_TIMEOUT,
+    limits=httpx.Limits(max_keepalive_connections=10, max_connections=20)
+)
+
+# Simple thread-safe TTL cache: key -> (value, expires_at)
+_cache: dict[str, tuple[Any, float]] = {}
+_cache_lock = Lock()
+
+
+def _cache_get(key: str) -> Any | None:
+    with _cache_lock:
+        entry = _cache.get(key)
+        if entry and time.time() < entry[1]:
+            return entry[0]
+        return None
+
+
+def _cache_set(key: str, value: Any) -> None:
+    with _cache_lock:
+        _cache[key] = (value, time.time() + _CACHE_TTL)
 
 
 class AnalyticsRepository:
@@ -43,8 +68,7 @@ class AnalyticsRepository:
         """Synchronous GET using httpx (analytics endpoints are non-async for simplicity)."""
         url = f"{self._base_url()}{path}"
         try:
-            with httpx.Client(timeout=_TIMEOUT) as client:
-                resp = client.get(url, headers=self._headers(), params=params or {})
+            resp = _shared_client.get(url, headers=self._headers(), params=params or {})
             if resp.status_code >= 400:
                 logger.error("analytics_repo GET %s -> %d %s", path, resp.status_code, resp.text[:200])
                 raise ApiError(502, "analytics_query_failed", "Analytics data unavailable.")
@@ -57,13 +81,42 @@ class AnalyticsRepository:
 
     def get_college_students(self, college_id: str) -> list[dict[str, Any]]:
         """All active student memberships for a college with their profiles."""
-        return self._get(
+        cache_key = f"college_students:{college_id}"
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            logger.debug("cache_hit key=%s", cache_key)
+            return cached
+
+        memberships = self._get(
             "/student_college_memberships",
             {
                 "college_id": f"eq.{college_id}",
-                "select": "department,enrollment_status,profiles!inner(user_id,display_name,email)",
+                "select": "student_id,department,enrollment_status",
             },
         )
+        if not memberships:
+            return []
+
+        student_ids = [m["student_id"] for m in memberships if m.get("student_id")]
+        if not student_ids:
+            return []
+
+        ids_csv = "(" + ",".join(student_ids) + ")"
+        profiles = self._get(
+            "/profiles",
+            {
+                "user_id": f"in.{ids_csv}",
+                "select": "user_id,display_name,email",
+            },
+        )
+
+        prof_by_id = {p["user_id"]: p for p in profiles}
+        for m in memberships:
+            sid = m.get("student_id")
+            m["profiles"] = prof_by_id.get(sid) or {}
+
+        _cache_set(cache_key, memberships)
+        return memberships
 
     def get_latest_twins_for_users(self, user_ids: list[str]) -> dict[str, int]:
         """Latest career-twin overall_score for a list of user IDs."""
@@ -71,16 +124,17 @@ class AnalyticsRepository:
             return {}
         ids_csv = "(" + ",".join(user_ids) + ")"
         rows = self._get(
-            "/career_twin_snapshots",
+            "/career_twins",
             {
                 "user_id": f"in.{ids_csv}",
-                "select": "user_id,overall_score",
+                "select": "user_id,result",
             },
         )
         scores: dict[str, int] = {}
         for row in rows:
             uid = row["user_id"]
-            score = row.get("overall_score")
+            res = row.get("result") or {}
+            score = res.get("overall_score")
             if score is not None:
                 if uid not in scores or score > scores[uid]:
                     scores[uid] = int(score)

@@ -10,10 +10,11 @@ import json
 import logging
 from typing import Any
 
+from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.integrations.groq import GroqClient
 from app.repositories.jobs import JobsRepository
-from app.repositories.profiles import ProfilesRepository
+from app.repositories.skills import SkillsRepository
 from app.schemas.jobs import (
     JobApplicationCreate,
     JobApplicationResponse,
@@ -44,11 +45,11 @@ class JobsService:
     def __init__(
         self,
         jobs_repo: JobsRepository,
-        profiles_repo: ProfilesRepository,
+        skills_repo: SkillsRepository,
         groq_client: GroqClient,
     ) -> None:
         self._jobs = jobs_repo
-        self._profiles = profiles_repo
+        self._skills = skills_repo
         self._groq = groq_client
 
     async def create_job(
@@ -75,17 +76,28 @@ class JobsService:
         claims: dict[str, Any],
         access_token: str,
     ) -> list[JobMatchResponse]:
-        """Find jobs matching the student's skills."""
+        """Find jobs matching the student's skills.
+
+        Uses the service-role key to list active jobs (public data) so that
+        student-JWT RLS policies don't block the read. Skills and applications
+        are fetched under the student's own token so RLS still protects them.
+        """
         student_id = claims["sub"]
-        
-        # 1. Fetch student's skills
-        profile = await self._profiles.get_profile(access_token, student_id)
-        candidate_skills = (profile or {}).get("skills_inventory", [])
-        
-        # 2. Fetch all active jobs
-        active_jobs = await self._jobs.list_active_jobs(access_token)
-        
-        # 3. Fetch applications to see if they already applied
+        settings = get_settings()
+        admin_token = settings.supabase_service_role_key or access_token
+
+        # Enrich claims with the access token so SkillsRepository can use it
+        # (all repositories read the token from claims["_access_token"]).
+        enriched_claims = {**claims, "_access_token": access_token}
+
+        # 1. Fetch student's skills (use student token — RLS protected)
+        skills_list = await self._skills.list_skills(enriched_claims, student_id)
+        candidate_skills = [s.get("display_name", "") for s in skills_list if s.get("display_name")]
+
+        # 2. Fetch all active jobs with admin/service-role token (public listing)
+        active_jobs = await self._jobs.list_active_jobs(admin_token)
+
+        # 3. Fetch applications (student token)
         apps = await self._jobs.get_student_applications(access_token, student_id)
         applied_job_ids = {str(app["job_id"]) for app in apps}
 
@@ -93,24 +105,29 @@ class JobsService:
         for job in active_jobs:
             job_resp = JobResponse(**job)
             has_applied = str(job["id"]) in applied_job_ids
-            
+            req_skills = job.get("required_skills", []) or []
+
             if not candidate_skills:
-                # No skills, default 0 match
+                # No skills in DB yet — return jobs with a baseline display score
+                # so the student can see what's available even before resume upload.
+                # Estimate readiness as 35% so the card renders as "partial match".
                 matches.append(JobMatchResponse(
                     job=job_resp,
-                    match_score=0,
+                    match_score=35,
                     matching_skills=[],
-                    missing_skills=job.get("required_skills", []),
-                    has_applied=has_applied
+                    missing_skills=req_skills,
+                    has_applied=has_applied,
                 ))
                 continue
-            
-            # Compare using Groq
-            req_skills = job.get("required_skills", [])
+
+            # 4. Compare using LLM
             desc = job.get("description", "")
-            
-            user_prompt = f"Candidate Skills: {', '.join(candidate_skills)}\n\nJob Required Skills: {', '.join(req_skills)}\nJob Description: {desc}"
-            
+            user_prompt = (
+                f"Candidate Skills: {', '.join(candidate_skills)}\n\n"
+                f"Job Required Skills: {', '.join(req_skills)}\n"
+                f"Job Description: {desc}"
+            )
+
             try:
                 raw = await self._groq.generate_structured(
                     system_prompt=_MATCH_PROMPT,
@@ -123,7 +140,7 @@ class JobsService:
                     match_score=int(raw.get("match_score", 0)),
                     matching_skills=raw.get("matching_skills", []),
                     missing_skills=raw.get("missing_skills", []),
-                    has_applied=has_applied
+                    has_applied=has_applied,
                 ))
             except Exception as e:
                 logger.error("Failed to generate match score for job %s: %s", job["id"], e)
@@ -132,7 +149,7 @@ class JobsService:
                     match_score=0,
                     matching_skills=[],
                     missing_skills=req_skills,
-                    has_applied=has_applied
+                    has_applied=has_applied,
                 ))
 
         # Sort by match_score descending

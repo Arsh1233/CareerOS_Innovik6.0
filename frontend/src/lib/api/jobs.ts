@@ -1,11 +1,14 @@
 import { apiClient } from "./client";
+import { requireToken } from "./token";
 import type { Job, JobApplication, JobMatch, RecruiterDashboard } from "./types";
 
 /**
  * Get job matches for the current student.
  */
 export async function getJobMatches(): Promise<JobMatch[]> {
-  return apiClient.request<JobMatch[]>("/jobs/matches");
+  return apiClient.request<JobMatch[]>("/jobs/matches", {
+    accessToken: requireToken(),
+  });
 }
 
 /**
@@ -14,6 +17,7 @@ export async function getJobMatches(): Promise<JobMatch[]> {
 export async function applyToJob(jobId: string): Promise<JobApplication> {
   return apiClient.request<JobApplication>(`/jobs/${jobId}/apply`, {
     method: "POST",
+    accessToken: requireToken(),
   });
 }
 
@@ -43,3 +47,7 @@ export async function updateApplicationStatus(applicationId: string, status: str
     body: JSON.stringify({ status }),
   });
 }
+
+import { discoverJobs } from './discover';
+export { discoverJobs };
+

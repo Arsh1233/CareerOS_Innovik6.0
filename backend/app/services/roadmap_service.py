@@ -174,21 +174,21 @@ class RoadmapService:
             profile_experience=str(profile.get("experience") or ""),
         )
 
-        groq_model = self._groq.model
+        groq_model = self._groq._model()
         raw_response: str | None = None
         plan: RoadmapPlan | None = None
 
         try:
-            raw_response = await self._groq.complete(
+            response_data = await self._groq.generate_structured(
                 system_prompt=ROADMAP_SYSTEM_PROMPT,
-                user_message=prompt,
+                user_prompt=prompt,
                 temperature=0.3,
             )
-            if not raw_response:
+            if not response_data:
                 raise ApiError(503, "groq_empty_response", "AI returned an empty roadmap.")
 
             # 4. Validate output before persistence
-            plan = self._parse_and_validate(raw_response)
+            plan = self._parse_and_validate(response_data)
         except ApiError:
             raise
         except ValidationError as exc:
@@ -298,18 +298,8 @@ class RoadmapService:
     # ── private ───────────────────────────────────────────────────────────
 
     @staticmethod
-    def _parse_and_validate(raw: str) -> RoadmapPlan:
-        """Extract JSON from Groq response and validate with Pydantic."""
-        text = raw.strip()
-        # Strip markdown code fences if present
-        if text.startswith("```"):
-            lines = text.split("\n")
-            text = "\n".join(
-                line for line in lines
-                if not line.strip().startswith("```")
-            ).strip()
-
-        data = json.loads(text)
+    def _parse_and_validate(data: dict[str, Any]) -> RoadmapPlan:
+        """Validate Groq JSON response with Pydantic."""
         return RoadmapPlan.model_validate(data)
 
 

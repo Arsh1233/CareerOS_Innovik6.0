@@ -47,7 +47,7 @@ def get_interview_service(
 )
 async def start_interview_session(
     request: StartSessionRequest,
-    
+    user: CurrentUser = Depends(require_roles("student")),
     service: InterviewService = Depends(get_interview_service),
 ) -> StartSessionResponse:
     """Create an interview session and return a short-lived ElevenLabs signed
@@ -57,8 +57,8 @@ async def start_interview_session(
     Returns 503 if ELEVENLABS_API_KEY or ELEVENLABS_AGENT_ID is not configured.
     """
     return await service.start_session(
-        claims={'sub': '00000000-0000-0000-0000-000000000000'},
-        access_token='fake',
+        claims=user.claims,
+        access_token=user.access_token,
         request=request,
     )
 
@@ -71,7 +71,7 @@ async def start_interview_session(
 )
 async def end_interview_session(
     request: EndSessionRequest,
-    
+    user: CurrentUser = Depends(require_roles("student")),
     service: InterviewService = Depends(get_interview_service),
 ) -> InterviewResult:
     """Signal that an interview session has ended.
@@ -83,8 +83,8 @@ async def end_interview_session(
     from ElevenLabs via the `conversation_initiation_metadata` WebSocket event.
     """
     return await service.end_session(
-        claims={'sub': '00000000-0000-0000-0000-000000000000'},
-        access_token='fake',
+        claims=user.claims,
+        access_token=user.access_token,
         request=request,
     )
 
@@ -97,13 +97,13 @@ async def end_interview_session(
 )
 async def get_interview_result(
     session_id: str,
-    
+    user: CurrentUser = Depends(require_roles("student")),
     service: InterviewService = Depends(get_interview_service),
 ) -> InterviewResult:
     """Fetch a previously completed and scored interview session."""
     return await service.get_result(
-        claims={'sub': '00000000-0000-0000-0000-000000000000'},
-        access_token='fake',
+        claims=user.claims,
+        access_token=user.access_token,
         session_id=session_id,
     )
 
@@ -116,12 +116,12 @@ async def get_interview_result(
 )
 async def list_interview_sessions(
     limit: int = 10,
-    
+    user: CurrentUser = Depends(require_roles("student")),
     service: InterviewService = Depends(get_interview_service),
 ) -> list[InterviewSessionSummary]:
     """Return the most recent interview sessions for the authenticated student."""
     return await service.list_sessions(
-        claims={'sub': '00000000-0000-0000-0000-000000000000'},
-        access_token='fake',
+        claims=user.claims,
+        access_token=user.access_token,
         limit=min(limit, 50),
     )

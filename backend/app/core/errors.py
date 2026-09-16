@@ -82,8 +82,8 @@ def _envelope(
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def _api_error_handler(request: Request, exc: ApiError) -> JSONResponse:
-        if exc.status_code >= 500:
-            logger.error("api_error code=%s request_id=%s", exc.code, _request_id(request))
+        if exc.status_code >= 400:
+            logger.error("api_error code=%s request_id=%s message=%s", exc.code, _request_id(request), exc.message)
         return _envelope(request, exc.status_code, exc.code, exc.message, exc.details)
 
     @app.exception_handler(RequestValidationError)

@@ -45,7 +45,9 @@ class ChatService:
                 raise ApiError(404, "session_not_found", "Chat session not found")
 
         # 2. Fetch context
-        profile = await self._profiles.get_profile(access_token, user_id)
+        profile = await self._profiles.get_by_user_id(
+            {"_access_token": access_token}, user_id
+        )
         history = await self._chat.get_session_history(access_token, str(session_id))
         
         # 3. Save user message

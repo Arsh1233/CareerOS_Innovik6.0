@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import {
   User, GraduationCap, Target, Zap, FileText, Shield,
   Briefcase, Edit2, Check, Loader2, AlertCircle, Plus, Trash2, ExternalLink,
@@ -594,7 +594,13 @@ function ResumeSection() {
 
 export default function ProfilePage() {
   const { user, profile, sessionError } = useAuth();
-  const [active, setActive] = useState("personal");
+  const [searchParams] = useSearchParams();
+  const [active, setActive] = useState(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "settings" || tab === "security") return "security";
+    if (tab && sections.some((s) => s.id === tab)) return tab;
+    return "personal";
+  });
 
   const initials = useMemo(() => {
     const name = user?.name?.trim();

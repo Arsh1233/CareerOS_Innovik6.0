@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router";
 import {
   Sparkles, CheckCircle, Circle, Lock, Clock, ChevronRight,
-  Target, Zap, Loader2, AlertCircle, RefreshCw, Info,
+  Target, Zap, Loader2, AlertCircle, RefreshCw, Info, ExternalLink, PlayCircle,
 } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { roadmapApi, type RoadmapResponse, type MilestoneResponse } from "../lib/api/roadmap";
@@ -426,19 +426,29 @@ export default function RoadmapPage() {
 
               {/* Active footer */}
               {!isDone && idx === completedCount && (
-                <div className="px-5 py-3 border-t border-[#F1F5F9] bg-[#F7F9FC] flex items-center justify-between">
+                <div className="px-5 py-3 border-t border-[#F1F5F9] bg-[#F7F9FC] flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2">
                     <Zap size={13} className="text-[#4F7CFF]" />
                     <span className="text-[12px] text-[#475467]">
                       Next: <strong>{milestone.title}</strong>
                     </span>
                   </div>
-                  <button
-                    onClick={() => navigate("/skills")}
-                    className="text-[12px] font-semibold text-[#4F7CFF] hover:underline flex items-center gap-1"
-                  >
-                    View Gaps <ChevronRight size={12} />
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <a
+                      href={`https://swayam.gov.in/explorer?searchText=${encodeURIComponent(week?.theme ?? milestone.title)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[12px] font-semibold text-violet hover:underline flex items-center gap-1"
+                    >
+                      <PlayCircle size={12} /> Free Courses
+                    </a>
+                    <button
+                      onClick={() => navigate("/skills")}
+                      className="text-[12px] font-semibold text-[#4F7CFF] hover:underline flex items-center gap-1"
+                    >
+                      View Gaps <ChevronRight size={12} />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -446,14 +456,22 @@ export default function RoadmapPage() {
         })}
       </div>
 
-      {/* Regenerate CTA at bottom */}
-      <div className="pt-2 flex gap-3">
+      {/* Bottom CTA row */}
+      <div className="pt-2 flex gap-3 flex-wrap">
         <button
           onClick={() => navigate("/skills")}
           className="flex items-center gap-1.5 text-sm font-semibold text-[#667085] border border-[#E4E7EC] px-4 py-2.5 rounded-xl hover:bg-[#F9FAFB] transition-colors"
         >
           View Skill Gaps <ChevronRight size={14} />
         </button>
+        <a
+          href={`https://swayam.gov.in/explorer?searchText=${encodeURIComponent(roadmap.target_role)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 text-sm font-semibold text-violet border border-violet/20 bg-violet/5 px-4 py-2.5 rounded-xl hover:bg-violet/10 transition-colors"
+        >
+          <PlayCircle size={14} /> Free Courses (SWAYAM)
+        </a>
         <button
           onClick={() => navigate("/career-twin")}
           className="flex items-center gap-1.5 text-sm font-semibold text-[#667085] border border-[#E4E7EC] px-4 py-2.5 rounded-xl hover:bg-[#F9FAFB] transition-colors"

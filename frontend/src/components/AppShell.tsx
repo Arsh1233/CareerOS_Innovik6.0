@@ -519,8 +519,9 @@ function ProfileDropdown({
 
   const routes = {
     profile:  { student: "/profile", college: "/college/settings", recruiter: "/recruiter/settings", admin: "/admin/settings" }[role],
-    settings: { student: "/profile", college: "/college/settings", recruiter: "/recruiter/settings", admin: "/admin/settings" }[role],
+    settings: { student: "/profile?tab=settings", college: "/college/settings", recruiter: "/recruiter/settings", admin: "/admin/settings" }[role],
     billing:  { student: "/subscription?plan=student-pro", college: "/subscription?plan=college", recruiter: "/subscription?plan=recruiter-starter", admin: "" }[role],
+    help:     "/mentor",
   };
 
   function go(to: string) { if (to) { navigate(to); onClose(); } }
@@ -760,6 +761,7 @@ export default function AppShell() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifPos, setNotifPos] = useState({ top: 0, right: 0 });
   const notifRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const [unreadCount, setUnreadCount] = useState(2);
 
   const [searchOpen, setSearchOpen] = useState(false);
@@ -777,11 +779,14 @@ export default function AppShell() {
     setNotifPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
   }
 
-  // Close profile on outside click
+  // Close profile on outside click — must exclude the dropdown portal itself
   useEffect(() => {
     if (!profileOpen) return;
     function handler(e: MouseEvent) {
-      if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const inAvatar = avatarRef.current?.contains(target);
+      const inDropdown = dropdownRef.current?.contains(target);
+      if (!inAvatar && !inDropdown) {
         setProfileOpen(false);
       }
     }
@@ -889,6 +894,7 @@ export default function AppShell() {
             />
           )}
           <div
+            ref={dropdownRef}
             style={isMobile
               ? { position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50 }
               : {

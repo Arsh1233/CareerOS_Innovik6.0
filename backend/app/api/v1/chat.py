@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from app.api.deps import CurrentUser, require_roles, get_profiles_repository
-from app.integrations.groq import GroqClient, get_groq_client
+from app.integrations.llm import LLMClient, get_llm_client
 from app.repositories.chat import ChatRepository
 from app.repositories.profiles import ProfilesRepository
 from app.schemas.chat import ChatRequest, ChatResponse
@@ -12,11 +12,11 @@ def get_chat_repository() -> ChatRepository:
     return ChatRepository()
 
 def get_chat_service(
-    groq: GroqClient = Depends(get_groq_client),
+    llm: LLMClient = Depends(get_llm_client),
     profiles: ProfilesRepository = Depends(get_profiles_repository),
     chat_repo: ChatRepository = Depends(get_chat_repository),
 ) -> ChatService:
-    return ChatService(groq_client=groq, profiles_repo=profiles, chat_repo=chat_repo)
+    return ChatService(groq_client=llm, profiles_repo=profiles, chat_repo=chat_repo)
 
 @router.post(
     "/",

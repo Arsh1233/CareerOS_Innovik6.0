@@ -366,3 +366,37 @@ export interface AdminDashboard {
   colleges: CollegeMetric[];
   recruiters: RecruiterMetric[];
 }
+
+export interface DiscoveredJob {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  job_type: string;
+  experience: string;
+  salary: string;
+  skills_required: string[];
+  description: string;
+  apply_url: string;
+  source: string;
+  deadline: string;
+  match_score: number;
+  readiness_score: number;
+}
+
+export interface DiscoveredCourse {
+  id: string;
+  title: string;
+  provider: string;
+  instructor: string;
+  duration: string;
+  level: string;
+  skills_covered: string[];
+  description: string;
+  url: string;
+  is_free: boolean;
+  has_certificate: boolean;
+  language: string;
+  relevance_score: number;
+}
+

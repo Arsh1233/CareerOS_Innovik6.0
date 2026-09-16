@@ -1,17 +1,57 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useLocation } from "react-router";
 import {
   Search, Filter, Star, ChevronRight, Download, Briefcase, Users, TrendingUp,
   Target, Clock, CheckCircle, ArrowUpRight, Sparkles, BarChart2, MapPin,
-  Building2, MessageCircle, X, Loader2
+  Building2, MessageCircle, X,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell,
 } from "recharts";
-import { getRecruiterDashboard, updateApplicationStatus } from "../lib/api/jobs";
 import type { RecruiterDashboard, JobApplication, RecruiterPipelineMetric, RecruiterJobMetric } from "../lib/api/types";
-import { useToast } from "../context/ToastContext";
+
+// ── Hardcoded demo data ───────────────────────────────────────────────────
+const FALLBACK_RECRUITER: RecruiterDashboard = {
+  pipeline: [
+    { stage: "Talent Pool",   count: 1240, color: "#6E72E8" },
+    { stage: "Applied",       count: 384,  color: "#4F7CFF" },
+    { stage: "Shortlisted",   count: 127,  color: "#8B7CFF" },
+    { stage: "Interviewed",   count: 61,   color: "#22A06B" },
+    { stage: "Offers Sent",   count: 18,   color: "#F59E0B" },
+    { stage: "Hired",         count: 11,   color: "#22C55E" },
+  ],
+  job_metrics: [
+    {
+      job: { id: "j1", recruiter_id: "r1", company_name: "Infosys", title: "Software Engineer – Cloud", department: "Engineering", location: "Bengaluru", salary_range: "₹8–14 LPA", employment_type: "Full-time", description: null, required_skills: ["AWS", "Docker", "Python"] },
+      applicants_count: 98, shortlisted_count: 22, avg_match_score: 81,
+    },
+    {
+      job: { id: "j2", recruiter_id: "r1", company_name: "Infosys", title: "Data Analyst", department: "Analytics", location: "Hyderabad", salary_range: "₹6–10 LPA", employment_type: "Full-time", description: null, required_skills: ["SQL", "Python", "Tableau"] },
+      applicants_count: 74, shortlisted_count: 18, avg_match_score: 76,
+    },
+    {
+      job: { id: "j3", recruiter_id: "r1", company_name: "Infosys", title: "Frontend Developer", department: "Product", location: "Pune", salary_range: "₹7–12 LPA", employment_type: "Full-time", description: null, required_skills: ["React", "TypeScript", "CSS"] },
+      applicants_count: 62, shortlisted_count: 14, avg_match_score: 79,
+    },
+    {
+      job: { id: "j4", recruiter_id: "r1", company_name: "Infosys", title: "DevOps Engineer", department: "Infrastructure", location: "Chennai", salary_range: "₹9–15 LPA", employment_type: "Full-time", description: null, required_skills: ["Kubernetes", "CI/CD", "Linux"] },
+      applicants_count: 45, shortlisted_count: 10, avg_match_score: 84,
+    },
+  ],
+  recent_applications: [
+    { id: "a1",  job_id: "j1", student_id: "s1",  status: "shortlisted", match_score: 94, student_name: "Aarav Shah",    college: "SRM Institute",    department: "CS",   skills: ["AWS", "Docker", "Python"] },
+    { id: "a2",  job_id: "j1", student_id: "s2",  status: "reviewing",   match_score: 88, student_name: "Priya Nair",    college: "VIT Vellore",     department: "IT",   skills: ["AWS", "Python"] },
+    { id: "a3",  job_id: "j2", student_id: "s3",  status: "interviewed", match_score: 91, student_name: "Diya Iyer",     college: "BITS Pilani",     department: "CS",   skills: ["SQL", "Python", "Tableau"] },
+    { id: "a4",  job_id: "j3", student_id: "s4",  status: "new",         match_score: 77, student_name: "Rohan Mehta",   college: "NIT Trichy",      department: "ECE",  skills: ["React", "JavaScript"] },
+    { id: "a5",  job_id: "j1", student_id: "s5",  status: "offered",     match_score: 96, student_name: "Nikhil Rao",    college: "IIT Bombay",      department: "CS",   skills: ["AWS", "Docker", "Python", "Kubernetes"] },
+    { id: "a6",  job_id: "j4", student_id: "s6",  status: "shortlisted", match_score: 85, student_name: "Sneha Reddy",   college: "SRM Institute",   department: "IT",   skills: ["Kubernetes", "Linux"] },
+    { id: "a7",  job_id: "j2", student_id: "s7",  status: "reviewing",   match_score: 72, student_name: "Vivek Singh",   college: "Amity University", department: "CS",   skills: ["SQL", "Excel"] },
+    { id: "a8",  job_id: "j3", student_id: "s8",  status: "rejected",    match_score: 58, student_name: "Tanya Bose",    college: "Manipal",         department: "ECE",  skills: ["HTML", "CSS"] },
+    { id: "a9",  job_id: "j1", student_id: "s9",  status: "shortlisted", match_score: 89, student_name: "Ishaan Verma",  college: "VIT Vellore",     department: "CS",   skills: ["AWS", "Python"] },
+    { id: "a10", job_id: "j4", student_id: "s10", status: "new",         match_score: 80, student_name: "Meera Joshi",   college: "NIT Warangal",    department: "CS",   skills: ["CI/CD", "Docker"] },
+  ] as any,
+};
 
 // ── Shared helpers ────────────────────────────────────────────────────────
 
@@ -230,7 +270,6 @@ function JobsSection({ dashboard }: { dashboard: RecruiterDashboard }) {
 function CandidatesSection({ dashboard, refresh }: { dashboard: RecruiterDashboard, refresh: () => void }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
-  const { error, success } = useToast();
   
   const shown = dashboard.recent_applications.filter(c =>
     (filter === "all" || c.status === filter) &&
@@ -238,14 +277,17 @@ function CandidatesSection({ dashboard, refresh }: { dashboard: RecruiterDashboa
   );
 
   async function handleStatusChange(appId: string, status: string) {
-    try {
-      await updateApplicationStatus(appId, status);
-      success("Status updated");
-      refresh();
-    } catch (err: any) {
-      error(err.message);
-    }
+    // Demo behavior: Update the object in memory and force a re-render
+    const app = dashboard.recent_applications.find(a => a.id === appId);
+    if (app) app.status = status;
+    
+    // In a real app we'd call updateApplicationStatus here
+    console.log(`Status updated for ${appId} to ${status}`);
+    
+    // We don't have a strict refresh for static data, but we can trigger a re-render if needed
+    // The select box handles its own visual state, or we could lift state up.
   }
+
 
   return (
     <div className="p-6 space-y-5 max-w-[1100px]">
@@ -318,39 +360,11 @@ function CandidatesSection({ dashboard, refresh }: { dashboard: RecruiterDashboa
 
 export default function RecruiterPage() {
   const { pathname } = useLocation();
-  const [dashboard, setDashboard] = useState<RecruiterDashboard | null>(null);
-  const [loading, setLoading] = useState(true);
-  const { error } = useToast();
-
-  async function loadData() {
-    try {
-      const data = await getRecruiterDashboard();
-      setDashboard(data);
-    } catch (err: any) {
-      error(err.message || "Failed to load dashboard data");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadData();
-  }, [error]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[500px]">
-        <Loader2 className="w-8 h-8 animate-spin text-[#8B7CFF]" />
-      </div>
-    );
-  }
-  
-  if (!dashboard) {
-     return <div>Failed to load data.</div>;
-  }
+  // Use hardcoded demo data — always renders instantly, no API needed
+  const dashboard = FALLBACK_RECRUITER;
 
   if (pathname.startsWith("/recruiter/candidates") || pathname.startsWith("/recruiter/shortlist")) {
-    return <CandidatesSection dashboard={dashboard} refresh={loadData} />;
+    return <CandidatesSection dashboard={dashboard} refresh={() => {}} />;
   }
   if (pathname.startsWith("/recruiter/jobs")) {
     return <JobsSection dashboard={dashboard} />;

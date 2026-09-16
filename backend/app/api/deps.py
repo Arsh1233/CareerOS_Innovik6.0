@@ -96,3 +96,8 @@ def get_auth_service(
     profiles: ProfilesRepository = Depends(get_profiles_repository),
 ) -> AuthService:
     return AuthService(auth_client=auth_client, profiles=profiles)
+
+
+def get_postgrest_client(settings: Settings = Depends(get_settings)):
+    from app.integrations.postgrest import PostgRESTClient
+    return PostgRESTClient(settings)

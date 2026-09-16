@@ -15,7 +15,7 @@ import logging
 from fastapi import APIRouter, Depends
 
 from app.api.deps import CurrentUser, get_profiles_repository, require_roles
-from app.integrations.groq import GroqClient, get_groq_client
+from app.integrations.llm import LLMClient, get_llm_client
 from app.repositories.career_twins import CareerTwinsRepository
 from app.repositories.profiles import ProfilesRepository
 from app.repositories.roadmaps import RoadmapsRepository
@@ -41,8 +41,8 @@ def get_roadmaps_repository() -> RoadmapsRepository:
     return RoadmapsRepository()
 
 
-def get_roadmap_groq_client() -> GroqClient:
-    return get_groq_client()
+def get_roadmap_llm_client() -> LLMClient:
+    return get_llm_client()
 
 
 def get_career_twins_repository_local() -> CareerTwinsRepository:
@@ -70,14 +70,14 @@ def get_skill_gap_service(
 
 
 def get_roadmap_service(
-    groq: GroqClient = Depends(get_roadmap_groq_client),
+    llm: LLMClient = Depends(get_roadmap_llm_client),
     profiles: ProfilesRepository = Depends(get_profiles_repository),
     roadmaps: RoadmapsRepository = Depends(get_roadmaps_repository),
     twins: CareerTwinsRepository = Depends(get_career_twins_repository_local),
     gap_service: SkillGapService = Depends(get_skill_gap_service),
 ) -> RoadmapService:
     return RoadmapService(
-        groq_client=groq,
+        groq_client=llm,
         profiles_repo=profiles,
         roadmaps_repo=roadmaps,
         twins_repo=twins,

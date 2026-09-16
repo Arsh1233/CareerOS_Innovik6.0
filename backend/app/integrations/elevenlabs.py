@@ -17,7 +17,7 @@ from typing import Any
 
 import httpx
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 
 logger = logging.getLogger("careeros.elevenlabs")
@@ -157,12 +157,9 @@ class ElevenLabsClient:
 _elevenlabs_client: ElevenLabsClient | None = None
 
 
-def get_elevenlabs_client(settings: Settings | None = None) -> ElevenLabsClient:
+def get_elevenlabs_client() -> ElevenLabsClient:
     """Return the shared ElevenLabs client (lazy singleton)."""
     global _elevenlabs_client
     if _elevenlabs_client is None:
-        if settings is None:
-            from app.core.config import get_settings
-            settings = get_settings()
-        _elevenlabs_client = ElevenLabsClient(settings)
+        _elevenlabs_client = ElevenLabsClient(get_settings())
     return _elevenlabs_client

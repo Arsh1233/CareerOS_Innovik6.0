@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, career_twin, health, resumes, roadmap, skills, users, chat, voice, jobs, colleges, admin
+from app.api.v1 import auth, career_twin, health, resumes, roadmap, skills, users, chat, voice, jobs, colleges, admin, courses
 
 api_router = APIRouter()
 api_router.include_router(health.router)
@@ -24,3 +24,4 @@ api_router.include_router(voice.router)
 api_router.include_router(jobs.router)
 api_router.include_router(colleges.router)
 api_router.include_router(admin.router)
+api_router.include_router(courses.router)

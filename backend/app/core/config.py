@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
 
+    # ── Google Gemini (alternative LLM provider) ──────────────────────────
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
+
     qdrant_url: str = ""
     qdrant_api_key: str = ""
 
@@ -99,6 +103,7 @@ class Settings(BaseSettings):
             "supabase_storage": bool(self.supabase_url and self.supabase_service_role_key),
             "database": bool(self.database_url),
             "groq": bool(self.groq_api_key),
+            "gemini": bool(self.gemini_api_key),
             "qdrant": bool(self.qdrant_url and self.qdrant_api_key),
             "elevenlabs": bool(self.elevenlabs_api_key),
             "elevenlabs_agent": bool(self.elevenlabs_api_key and self.elevenlabs_agent_id),
