@@ -1,6 +1,5 @@
 <div align="center">
-  <img src="https://img.shields.io/badge/CareerOS-RuBI-6E72E8?style=for-the-badge&logo=react&logoColor=white" alt="CareerOS RuBI Logo" />
-  <h1 align="center">CareerOS RuBI</h1>
+  <h1 align="center">CareerOS</h1>
   <p align="center">
     <strong>The next-generation, AI-driven career operating system bridging Students, Colleges, and Recruiters.</strong>
   </p>
